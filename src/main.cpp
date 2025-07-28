@@ -1,10 +1,3 @@
-//#define STB_IMAGE_IMPLEMENTATION
-//#include "stb_image.h"
-//#include "Shader.h"
-//#include <SDL2/SDL.h>
-//#include <filesystem>
-//#include "camera.h"
-
 #include "gl_engine.h"
 
 
