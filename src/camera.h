@@ -1,3 +1,5 @@
+#pragma once
+
 #include <SDL_events.h>
 #include <glm/glm.hpp>
 
