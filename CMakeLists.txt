@@ -11,5 +11,4 @@ foreach(cfg IN ITEMS Debug Release RelWithDebInfo MinSizeRel)
 endforeach()
 
 add_subdirectory(third_party)
-
 add_subdirectory(src)
