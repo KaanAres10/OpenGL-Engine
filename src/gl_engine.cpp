@@ -64,7 +64,9 @@ bool GLEngine::init(int w, int h) {
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
-    objectMesh = glloader::loadCubeWithNormal();
+
+    objectMesh = glloader::loadCubeWithTexture_Normal();
+    containerTex = glloader::loadTexture("assets/textures/container.png");
 
     camera.position = { 0,0,5 };
     camera.pitch = { 0.040 };
@@ -111,6 +113,7 @@ void GLEngine::draw() {
     glClearColor(.2f, .2f, .2f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+
     glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = glm::perspective(glm::radians(45.f),
@@ -128,6 +131,8 @@ void GLEngine::draw() {
 
     model = glm::mat4(1.0f);
     pipelines["object"].apply();
+    pipelines["object"].shader.setInt("material.diffuse", 0);
+    glad_glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
     glBindVertexArray(objectMesh.vao);
     pipelines["object"].shader.setMat4("model", model);
     pipelines["object"].shader.setMat4("view", view);

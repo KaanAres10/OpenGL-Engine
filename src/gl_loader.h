@@ -8,5 +8,6 @@ namespace glloader {
 	GLMesh loadCube();
 	GLMesh loadCubeWithoutTexture();
 	GLMesh loadCubeWithNormal();
+	GLMesh loadCubeWithTexture_Normal();
 }
 

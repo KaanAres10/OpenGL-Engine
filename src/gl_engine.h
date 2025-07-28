@@ -23,7 +23,7 @@ private:
 	GLMesh        objectMesh;
 	GLMesh        lightMesh;
 	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
-	GLTexture     wallTex, faceTex;
+	GLTexture     wallTex, faceTex, containerTex;
 	std::vector<glm::vec3> cubePositions;
 
 	int viewportW, viewportH;
