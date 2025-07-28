@@ -17,6 +17,7 @@ public:
 	// program ID
 	GLuint ID;
 
+    Shader() = default;
     Shader(const char* vertexPath, const char* fragmentPath) {
         std::string vertCode = readFile(vertexPath);
         std::string fragCode = readFile(fragmentPath);
