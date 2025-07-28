@@ -165,7 +165,9 @@ void GLEngine::draw() {
     pipelines["object"].shader.setVec3("light.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
     pipelines["object"].shader.setVec3("light.diffuse", glm::vec3(0.5f, 0.5f, 0.5f));
     pipelines["object"].shader.setVec3("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
-    pipelines["object"].shader.setVec3("light.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
+    pipelines["object"].shader.setFloat("light.constant", 1.0f);
+    pipelines["object"].shader.setFloat("light.linear", 0.09f);
+    pipelines["object"].shader.setFloat("light.quadratic", 0.032f);
 
     for (GLuint i = 0; i < cubePositions.size(); i++) {
         model = glm::translate(glm::mat4(1.0f), cubePositions[i]);
