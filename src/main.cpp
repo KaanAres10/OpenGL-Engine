@@ -21,27 +21,6 @@ constexpr float BASE_ASPECT = float(BASE_WIDTH) / float(BASE_HEIGHT);
 
 GLuint VAO = 0;
 
-static std::string getExecutableDir() {
-    char* basePath = SDL_GetBasePath();
-    if (!basePath) throw std::runtime_error("SDL_GetBasePath failed");
-    std::string dir(basePath);
-    SDL_free(basePath);
-    // strip off the executable name, keep the trailing slash
-    auto pos = dir.find_last_of("\\/");
-    if (pos != std::string::npos)
-        dir.resize(pos + 1);
-    return dir;
-}
-
-static std::string readFile(const std::string& relativePath) {
-    std::string fullPath = getExecutableDir() + "shaders/" + relativePath;
-    std::ifstream in(fullPath, std::ios::in | std::ios::binary);
-    if (!in) throw std::runtime_error("Failed to open file: " + fullPath);
-    std::ostringstream buf;
-    buf << in.rdbuf();
-    return buf.str();
-}
-
 void updateViewport(int windowW, int windowH) {
     float winAspect = float(windowW) / float(windowH);
     int vpW, vpH, vpX, vpY;
@@ -61,7 +40,6 @@ void updateViewport(int windowW, int windowH) {
 
     glViewport(vpX, vpY, vpW, vpH);
 }
-
 
 
 void initGLResources() {
