@@ -85,6 +85,7 @@ bool GLEngine::init(int w, int h) {
     camera.position = { 0,0,5 };
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
+    camera.front = { 0.0f, 0.0f, -1.0f };
 
     viewportW = w; viewportH = h;
     return true;
@@ -168,6 +169,12 @@ void GLEngine::draw() {
     pipelines["object"].shader.setFloat("light.constant", 1.0f);
     pipelines["object"].shader.setFloat("light.linear", 0.09f);
     pipelines["object"].shader.setFloat("light.quadratic", 0.032f);
+    pipelines["object"].shader.setVec3("light.position", camera.position);
+    pipelines["object"].shader.setVec3("light.direction", camera.front);
+    pipelines["object"].shader.setFloat("light.cutOff", glm::cos(glm::radians(12.5f)));
+    pipelines["object"].shader.setFloat("light.outerCutOff", glm::cos(glm::radians(17.5f)));
+
+
 
     for (GLuint i = 0; i < cubePositions.size(); i++) {
         model = glm::translate(glm::mat4(1.0f), cubePositions[i]);

@@ -10,6 +10,8 @@ void Camera::update(float deltaTime)
 	if (moveLeft) dir.x -= 1.f;
 	if (moveRight) dir.x += 1.f;
 
+    front = getFront();
+
 	if (glm::length2(dir) > 0.f)
 	{
 		dir = glm::normalize(dir) * movementSpeed * deltaTime;
@@ -84,5 +86,8 @@ glm::mat4 Camera::getRotationMatrix() const
 	glm::quat qYaw = glm::angleAxis(yaw, glm::vec3{ 0.f, -1.f, 0.f });
 
 	return glm::toMat4(qYaw * qPitch);
+}
 
+glm::vec3 Camera::getFront() const {
+    return glm::normalize(glm::vec3(getRotationMatrix() * glm::vec4(0, 0, -1, 0)));
 }

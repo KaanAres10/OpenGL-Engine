@@ -7,6 +7,8 @@ class Camera {
 public:
 	glm::vec3 position;
 
+	glm::vec3 front;
+
 	bool m_leftMouseDown = false;
 	bool m_rightMouseDown = false;
 
@@ -34,6 +36,7 @@ public:
 
 	glm::mat4 getViewMatrix() const;
 	glm::mat4 getRotationMatrix() const;
+	glm::vec3 getFront() const;
 
 	void processSDLEvent(SDL_Event& e);
 
