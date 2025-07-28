@@ -67,6 +67,7 @@ bool GLEngine::init(int w, int h) {
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
     containerTex = glloader::loadTexture("assets/textures/container.png");
+    containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
 
     camera.position = { 0,0,5 };
     camera.pitch = { 0.040 };
@@ -132,7 +133,11 @@ void GLEngine::draw() {
     model = glm::mat4(1.0f);
     pipelines["object"].apply();
     pipelines["object"].shader.setInt("material.diffuse", 0);
-    glad_glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
+    pipelines["object"].shader.setInt("material.specular", 1);
+
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, containerSpecularTex.id);
+
     glBindVertexArray(objectMesh.vao);
     pipelines["object"].shader.setMat4("model", model);
     pipelines["object"].shader.setMat4("view", view);
