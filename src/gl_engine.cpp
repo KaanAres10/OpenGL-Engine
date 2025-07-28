@@ -1,4 +1,3 @@
-// gl_engine.cpp
 #include "gl_engine.h"
 #include "gl_loader.h"
 #include "gl_initializers.h"
@@ -69,6 +68,20 @@ bool GLEngine::init(int w, int h) {
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
 
+
+    cubePositions = {
+       {  0.0f,  0.0f,   0.0f },
+       {  2.0f,  5.0f, -15.0f },
+       { -1.5f, -2.2f,  -2.5f },
+       { -3.8f, -2.0f, -12.3f },
+       {  2.4f, -0.4f,  -3.5f },
+       { -1.7f,  3.0f,  -7.5f },
+       {  1.3f, -2.0f,  -2.5f },
+       {  1.5f,  2.0f,  -2.5f },
+       {  1.5f,  0.2f,  -1.5f },
+       { -1.3f,  1.0f,  -1.5f }
+    };
+
     camera.position = { 0,0,5 };
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
@@ -134,7 +147,6 @@ void GLEngine::draw() {
     pipelines["object"].apply();
     pipelines["object"].shader.setInt("material.diffuse", 0);
     pipelines["object"].shader.setInt("material.specular", 1);
-
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, containerSpecularTex.id);
 
@@ -153,9 +165,16 @@ void GLEngine::draw() {
     pipelines["object"].shader.setVec3("light.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
     pipelines["object"].shader.setVec3("light.diffuse", glm::vec3(0.5f, 0.5f, 0.5f));
     pipelines["object"].shader.setVec3("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
+    pipelines["object"].shader.setVec3("light.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
 
+    for (GLuint i = 0; i < cubePositions.size(); i++) {
+        model = glm::translate(glm::mat4(1.0f), cubePositions[i]);
+        float angle = 20.0f * i;
+        model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+        pipelines["object"].shader.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, objectMesh.vertexCount);
+    }
 
-    glDrawArrays(GL_TRIANGLES, 0, objectMesh.vertexCount);
     glBindVertexArray(0);
 }
 

@@ -1,4 +1,3 @@
-// gl_engine.h
 #pragma once
 #include "gl_pipelines.h"
 #include <SDL.h>
