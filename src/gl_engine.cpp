@@ -7,6 +7,10 @@
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/quaternion.hpp>
 
+#include "imgui.h"
+#include "backends/imgui_impl_sdl2.h"
+#include "backends/imgui_impl_opengl3.h"
+
 bool GLEngine::init(int w, int h) {
     if (SDL_Init(SDL_INIT_VIDEO)) return false;
     window = SDL_CreateWindow("GL Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -40,38 +44,32 @@ bool GLEngine::init(int w, int h) {
     glViewport(0, 0, w, h);
     glEnable(GL_DEPTH_TEST);
 
-    pipelines["textured"] = GLPipeline{
-        Shader("triangle.vert", "triangle.frag"), 
-        BlendMode::Alpha,  
-        true,              
-        GL_NONE,         
-        GL_FILL          
+
+    pipelines["light"] = GLPipeline{
+        Shader("light.vert", "light.frag"),
+        BlendMode::Alpha,
+        true,
+        GL_NONE,
+        GL_FILL
     };
 
-    pipelines["textured"].shader.use();
-    pipelines["textured"].shader.setInt("texture1", 0);
-    pipelines["textured"].shader.setInt("texture2", 1);
 
-
-    cubeMesh = glloader::loadCube();
-    wallTex = glloader::loadTexture("assets/textures/wall.jpg");
-    faceTex = glloader::loadTexture("assets/textures/awesomeface.png");
-
-
-    cubePositions = {
-        {  0.0f,  0.0f,   0.0f },
-        {  2.0f,  5.0f, -15.0f },
-        { -1.5f, -2.2f,  -2.5f },
-        { -3.8f, -2.0f, -12.3f },
-        {  2.4f, -0.4f,  -3.5f },
-        { -1.7f,  3.0f,  -7.5f },
-        {  1.3f, -2.0f,  -2.5f },
-        {  1.5f,  2.0f,  -2.5f },
-        {  1.5f,  0.2f,  -1.5f },
-        { -1.3f,  1.0f,  -1.5f }
+    pipelines["object"] = GLPipeline{
+        Shader("object.vert", "object.frag"),
+        BlendMode::Alpha,
+        true,
+        GL_NONE,
+        GL_FILL
     };
 
-    camera.position = { 0,0,3 };
+    lightMesh = glloader::loadCubeWithoutTexture();
+
+    objectMesh = glloader::loadCubeWithNormal();
+
+    camera.position = { 0,0,5 };
+    camera.pitch = { 0.040 };
+    camera.yaw = { 0.2 };
+
     viewportW = w; viewportH = h;
     return true;
 }
@@ -81,6 +79,7 @@ void GLEngine::run() {
     Uint32 last = SDL_GetTicks();
     while (running) {
         Uint32 now = SDL_GetTicks();
+        float totalTime = now * 0.001f;
         float dt = (now - last) * 0.001f; last = now;
 
         SDL_Event e;
@@ -105,37 +104,55 @@ void GLEngine::processEvent(SDL_Event& e) {
 }
 
 void GLEngine::update(float dt) {
-    // animate cubePositions, etc.
+
 }
 
 void GLEngine::draw() {
     glClearColor(.2f, .2f, .2f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    pipelines["textured"].apply();
-
-    // bind textures
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, wallTex.id);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, faceTex.id);
-
+    glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = glm::perspective(glm::radians(45.f),
         float(viewportW) / viewportH, .1f, 100.f);
-    glUniformMatrix4fv(glGetUniformLocation(pipelines["textured"].shader.ID, "view"), 1, GL_FALSE, &view[0][0]);
-    glUniformMatrix4fv(glGetUniformLocation(pipelines["textured"].shader.ID, "projection"), 1, GL_FALSE, &proj[0][0]);
 
-    glBindVertexArray(cubeMesh.vao);
-    for (auto& pos : cubePositions) {
-        glm::mat4 model = glm::translate(glm::mat4(1.0f), pos);
-        glUniformMatrix4fv(glGetUniformLocation(pipelines["textured"].shader.ID, "model"), 1, GL_FALSE, &model[0][0]);
-        glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
-    }
+    model = glm::translate(glm::mat4(1.0f), lightPos);
+    model = glm::scale(model, glm::vec3(0.2f));
+    pipelines["light"].apply();
+    glBindVertexArray(lightMesh.vao);
+    pipelines["light"].shader.setMat4("model", model);
+    pipelines["light"].shader.setMat4("view", view);
+    pipelines["light"].shader.setMat4("projection", proj);
+    glDrawArrays(GL_TRIANGLES, 0, lightMesh.vertexCount);
+    glBindVertexArray(0);
+
+    model = glm::mat4(1.0f);
+    pipelines["object"].apply();
+    glBindVertexArray(objectMesh.vao);
+    pipelines["object"].shader.setMat4("model", model);
+    pipelines["object"].shader.setMat4("view", view);
+    pipelines["object"].shader.setMat4("projection", proj);
+    pipelines["object"].shader.setVec3("objectColor", glm::vec3(1.0f, 0.5f, 0.31f));
+    pipelines["object"].shader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
+    pipelines["object"].shader.setVec3("lightPos", lightPos);
+    pipelines["object"].shader.setVec3("viewPos", camera.position);
+    pipelines["object"].shader.setVec3("material.ambient", glm::vec3(1.0f, 0.5, 0.31f));
+    pipelines["object"].shader.setVec3("material.diffuse", glm::vec3(1.0f, 0.5, 0.31f));
+    pipelines["object"].shader.setVec3("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
+    pipelines["object"].shader.setFloat("material.shininess", 32.0f);
+    pipelines["object"].shader.setVec3("light.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
+    pipelines["object"].shader.setVec3("light.diffuse", glm::vec3(0.5f, 0.5f, 0.5f));
+    pipelines["object"].shader.setVec3("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
+
+
+    glDrawArrays(GL_TRIANGLES, 0, objectMesh.vertexCount);
+    glBindVertexArray(0);
 }
 
 void GLEngine::cleanup() {
-    glDeleteProgram(pipelines["textured"].shader.ID);
-    glDeleteVertexArrays(1, &cubeMesh.vao);
-    glDeleteBuffers(1, &cubeMesh.vbo);
+    glDeleteProgram(pipelines["light"].shader.ID);
+    glDeleteVertexArrays(1, &lightMesh.vao);
+    glDeleteBuffers(1, &lightMesh.vbo);
     glDeleteTextures(1, &wallTex.id);
     glDeleteTextures(1, &faceTex.id);
     SDL_GL_DeleteContext(glContext);

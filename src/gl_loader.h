@@ -6,5 +6,7 @@ namespace glloader {
 	GLMeshBuffers loadMesh(const std::string& path);
 	GLTexture     loadTexture(const std::string& path);
 	GLMesh loadCube();
+	GLMesh loadCubeWithoutTexture();
+	GLMesh loadCubeWithNormal();
 }
 

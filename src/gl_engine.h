@@ -20,6 +20,9 @@ private:
 	Camera        camera;
 	std::unordered_map<std::string, GLPipeline> pipelines;
 	GLMesh        cubeMesh;
+	GLMesh        objectMesh;
+	GLMesh        lightMesh;
+	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
 	GLTexture     wallTex, faceTex;
 	std::vector<glm::vec3> cubePositions;
 
