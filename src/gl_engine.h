@@ -24,7 +24,7 @@ private:
 	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
 	GLTexture     wallTex, faceTex, containerTex, containerSpecularTex;
 	std::vector<glm::vec3> cubePositions;
-
+	std::vector<glm::vec3> pointLightPositions;
 	int viewportW, viewportH;
 
 	void processEvent(SDL_Event&);

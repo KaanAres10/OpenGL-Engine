@@ -82,6 +82,13 @@ bool GLEngine::init(int w, int h) {
        { -1.3f,  1.0f,  -1.5f }
     };
 
+    pointLightPositions = {
+        glm::vec3(0.7f,  0.2f,  2.0f),
+        glm::vec3(2.3f, -3.3f, -4.0f),
+        glm::vec3(-4.0f,  2.0f, -12.0f),
+        glm::vec3(0.0f,  0.0f, -3.0f)
+    };
+
     camera.position = { 0,0,5 };
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
@@ -128,7 +135,6 @@ void GLEngine::draw() {
     glClearColor(.2f, .2f, .2f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-
     glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 view = camera.getViewMatrix();
     glm::mat4 proj = glm::perspective(glm::radians(45.f),
@@ -137,10 +143,10 @@ void GLEngine::draw() {
     model = glm::translate(glm::mat4(1.0f), lightPos);
     model = glm::scale(model, glm::vec3(0.2f));
     pipelines["light"].apply();
-    glBindVertexArray(lightMesh.vao);
     pipelines["light"].shader.setMat4("model", model);
     pipelines["light"].shader.setMat4("view", view);
     pipelines["light"].shader.setMat4("projection", proj);
+    glBindVertexArray(lightMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, lightMesh.vertexCount);
     glBindVertexArray(0);
 
@@ -150,32 +156,63 @@ void GLEngine::draw() {
     pipelines["object"].shader.setInt("material.specular", 1);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, containerSpecularTex.id);
-
-    glBindVertexArray(objectMesh.vao);
+    pipelines["object"].shader.setVec3("material.ambient", glm::vec3(1.0f, 0.5, 0.31f));
+    pipelines["object"].shader.setFloat("material.shininess", 32.0f);
     pipelines["object"].shader.setMat4("model", model);
     pipelines["object"].shader.setMat4("view", view);
     pipelines["object"].shader.setMat4("projection", proj);
-    pipelines["object"].shader.setVec3("objectColor", glm::vec3(1.0f, 0.5f, 0.31f));
-    pipelines["object"].shader.setVec3("lightColor", glm::vec3(1.0f, 1.0f, 1.0f));
-    pipelines["object"].shader.setVec3("lightPos", lightPos);
     pipelines["object"].shader.setVec3("viewPos", camera.position);
-    pipelines["object"].shader.setVec3("material.ambient", glm::vec3(1.0f, 0.5, 0.31f));
-    pipelines["object"].shader.setVec3("material.diffuse", glm::vec3(1.0f, 0.5, 0.31f));
-    pipelines["object"].shader.setVec3("material.specular", glm::vec3(0.5f, 0.5f, 0.5f));
-    pipelines["object"].shader.setFloat("material.shininess", 32.0f);
-    pipelines["object"].shader.setVec3("light.ambient", glm::vec3(0.2f, 0.2f, 0.2f));
-    pipelines["object"].shader.setVec3("light.diffuse", glm::vec3(0.5f, 0.5f, 0.5f));
-    pipelines["object"].shader.setVec3("light.specular", glm::vec3(1.0f, 1.0f, 1.0f));
-    pipelines["object"].shader.setFloat("light.constant", 1.0f);
-    pipelines["object"].shader.setFloat("light.linear", 0.09f);
-    pipelines["object"].shader.setFloat("light.quadratic", 0.032f);
-    pipelines["object"].shader.setVec3("light.position", camera.position);
-    pipelines["object"].shader.setVec3("light.direction", camera.front);
-    pipelines["object"].shader.setFloat("light.cutOff", glm::cos(glm::radians(12.5f)));
-    pipelines["object"].shader.setFloat("light.outerCutOff", glm::cos(glm::radians(17.5f)));
 
+    pipelines["object"].shader.setVec3("directionalLight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
+    pipelines["object"].shader.setVec3("directionalLight.ambient", glm::vec3(0.05f, 0.05f, 0.05f));
+    pipelines["object"].shader.setVec3("directionalLight.diffuse", glm::vec3(0.4f, 0.4f, 0.4f));
+    pipelines["object"].shader.setVec3("directionalLight.specular", glm::vec3(0.5f, 0.5f, 0.5f));
 
+    for (GLuint i = 0; i < pointLightPositions.size(); i++) {
+        std::string idx = std::to_string(i);
 
+        pipelines["object"].shader.setVec3(
+            ("pointLights[" + idx + "].position").c_str(),
+            pointLightPositions[i]
+        );
+        pipelines["object"].shader.setVec3(
+            ("pointLights[" + idx + "].ambient").c_str(),
+            glm::vec3(0.05f)
+        );       
+        pipelines["object"].shader.setVec3(
+            ("pointLights[" + idx + "].diffuse").c_str(),
+            glm::vec3(0.8f)
+        );
+        pipelines["object"].shader.setVec3(
+            ("pointLights[" + idx + "].specular").c_str(),
+            glm::vec3(1.0f)
+        );
+        pipelines["object"].shader.setFloat(
+            ("pointLights[" + idx + "].constant").c_str(),
+            1.0f
+        );
+        pipelines["object"].shader.setFloat(
+            ("pointLights[" + idx + "].linear").c_str(),
+            0.09f
+        );
+        pipelines["object"].shader.setFloat(
+            ("pointLights[" + idx + "].quadratic").c_str(),
+            0.032f
+        );
+    }
+ 
+    pipelines["object"].shader.setVec3("spotLight.position", camera.position);
+    pipelines["object"].shader.setVec3("spotLight.direction", camera.front);
+    pipelines["object"].shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(12.5f)));
+    pipelines["object"].shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(17.5f)));
+    pipelines["object"].shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
+    pipelines["object"].shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
+    pipelines["object"].shader.setVec3("spotLight.specular", glm::vec3(1.0f));
+    pipelines["object"].shader.setFloat("spotLight.constant", 1.0f);
+    pipelines["object"].shader.setFloat("spotLight.linear", 0.09f);
+    pipelines["object"].shader.setFloat("spotLight.quadratic", 0.032f);
+
+    glBindVertexArray(objectMesh.vao);
     for (GLuint i = 0; i < cubePositions.size(); i++) {
         model = glm::translate(glm::mat4(1.0f), cubePositions[i]);
         float angle = 20.0f * i;
@@ -183,16 +220,20 @@ void GLEngine::draw() {
         pipelines["object"].shader.setMat4("model", model);
         glDrawArrays(GL_TRIANGLES, 0, objectMesh.vertexCount);
     }
-
     glBindVertexArray(0);
 }
 
 void GLEngine::cleanup() {
     glDeleteProgram(pipelines["light"].shader.ID);
+    glDeleteProgram(pipelines["object"].shader.ID);
     glDeleteVertexArrays(1, &lightMesh.vao);
+    glDeleteVertexArrays(1, &objectMesh.vao);
     glDeleteBuffers(1, &lightMesh.vbo);
+    glDeleteBuffers(1, &objectMesh.vbo);
     glDeleteTextures(1, &wallTex.id);
     glDeleteTextures(1, &faceTex.id);
+    glDeleteTextures(1, &containerTex.id);
+    glDeleteTextures(1, &containerSpecularTex.id);
     SDL_GL_DeleteContext(glContext);
     SDL_DestroyWindow(window);
     SDL_Quit();
