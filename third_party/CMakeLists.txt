@@ -34,6 +34,8 @@ add_library(imgui STATIC
   imgui/backends/imgui_impl_opengl3_loader.h
   imgui/ImGuizmo.cpp
 )
+
+
 target_include_directories(imgui PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/imgui
   ${CMAKE_CURRENT_SOURCE_DIR}/glad/include
@@ -47,5 +49,12 @@ target_link_libraries(imgui PUBLIC
   glad
 )
 
+
 add_subdirectory(fastgltf)
 add_subdirectory(fmt EXCLUDE_FROM_ALL)
+
+set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_SAMPLES      OFF CACHE BOOL "" FORCE)
+set(ASSIMP_BUILD_TESTS        OFF CACHE BOOL "" FORCE)
+set(ASSIMP_NO_EXPORT          ON  CACHE BOOL "" FORCE)
+add_subdirectory(assimp)

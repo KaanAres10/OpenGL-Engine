@@ -1,6 +1,5 @@
 #include "gl_engine.h"
 
-
 // Choose External GPU
 extern "C" {
     __declspec(dllexport) unsigned long NvOptimusEnablement = 0x00000001;

@@ -3,6 +3,8 @@ project("OpenGL-Engine" LANGUAGES C CXX)
 
 find_package(OpenGL REQUIRED)
 
+set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libs only" FORCE)
+
 foreach(cfg IN ITEMS Debug Release RelWithDebInfo MinSizeRel)
     string(TOUPPER ${cfg} CFG)
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_${CFG} "${PROJECT_SOURCE_DIR}/bin")

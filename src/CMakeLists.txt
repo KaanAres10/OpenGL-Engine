@@ -34,6 +34,7 @@ target_link_libraries(OpenGL-Engine PRIVATE
   imgui
   fmt::fmt
   fastgltf
+  assimp
 )
 
 file(GLOB_RECURSE SHADER_FILES
