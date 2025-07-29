@@ -11,31 +11,30 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      # 1) Check out the repository
       - uses: actions/checkout@v4
 
-      # 2) Cache build dir
       - uses: actions/cache@v3
         with:
           path: build
           key: ${{ runner.os }}-cmake-${{ hashFiles('**/CMakeLists.txt') }}
 
-      # 3) Configure with Ninja Multi-Config
       - name: Configure CMake
         run: cmake -B build -G "Ninja Multi-Config" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
-      # 4) Build in parallel
       - name: Build
-        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel 8
+        run: cmake --build build --config ${{ env.BUILD_TYPE }} --parallel $Env:NUMBER_OF_PROCESSORS
 
-      # 5) Run tests
       - name: Test
         working-directory: build
         run: ctest --output-on-failure -C ${{ env.BUILD_TYPE }}
 
-      # 6) Launch your engine to verify it starts
       - name: Launch Engine
-        working-directory: build/${{ env.BUILD_TYPE }}
+        shell: pwsh
         run: |
-          cp "${{ github.workspace }}/bin/SDL2.dll" .
-          ./OpenGL-Engine.exe --help
+          # copy the SDL2 runtime next to the exe
+          Copy-Item "$Env:GITHUB_WORKSPACE\bin\SDL2.dll" `
+            -Destination "$Env:GITHUB_WORKSPACE\build\${{ env.BUILD_TYPE }}"
+
+          # switch into the Release folder and launch
+          Push-Location "$Env:GITHUB_WORKSPACE\build\${{ env.BUILD_TYPE }}"
+          .\OpenGL-Engine.exe --help
