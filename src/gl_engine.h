@@ -4,7 +4,7 @@
 #include "camera.h"
 #include "gl_types.h"
 #include <vector>
-#include <Shader.h>
+#include <shader.h>
 #include <unordered_map>
 
 class GLEngine {

@@ -1,5 +1,5 @@
 #pragma once
-#include "Shader.h"          
+#include "shader.h"          
 #include "gl_initializers.h" 
 
 struct GLPipeline {
