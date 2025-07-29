@@ -18,7 +18,7 @@ public:
 	// horizontal rotation
 	float yaw{ 0.f };
 
-	float movementSpeed = 5.f;
+	float movementSpeed = 100.f;
 	float mouseSensitivity = 0.002f;
 	float maxPitchAngle = glm::radians(89.f);
 
@@ -28,8 +28,8 @@ public:
 	bool moveRight = false;
 
 
-	float minSpeed = 0.1f;   
-	float maxSpeed = 50.f;
+	float minSpeed = 1.0f;   
+	float maxSpeed = 200.f;
 
 	void resetInput();
 

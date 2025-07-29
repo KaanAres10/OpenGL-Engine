@@ -6,6 +6,7 @@
 #include <vector>
 #include <shader.h>
 #include <unordered_map>
+#include <model.h>
 
 class GLEngine {
 public:
@@ -25,6 +26,7 @@ private:
 	GLTexture     wallTex, faceTex, containerTex, containerSpecularTex;
 	std::vector<glm::vec3> cubePositions;
 	std::vector<glm::vec3> pointLightPositions;
+	Model sceneModel;
 	int viewportW, viewportH;
 
 	void processEvent(SDL_Event&);

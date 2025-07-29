@@ -10,6 +10,7 @@
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl3.h"
 
+
 bool GLEngine::init(int w, int h) {
     if (SDL_Init(SDL_INIT_VIDEO)) return false;
     window = SDL_CreateWindow("GL Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -61,13 +62,21 @@ bool GLEngine::init(int w, int h) {
         GL_FILL
     };
 
-    lightMesh = glloader::loadCubeWithoutTexture();
+    pipelines["model"] = GLPipeline{
+        Shader("model.vert", "model.frag"),
+        BlendMode::Alpha,
+        true,
+        GL_BACK,
+        GL_FILL
+    };
 
+    lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
 
+    sceneModel.loadModel("assets/Sponza/Sponza.gltf");
 
     cubePositions = {
        {  0.0f,  0.0f,   0.0f },
@@ -137,8 +146,8 @@ void GLEngine::draw() {
 
     glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 view = camera.getViewMatrix();
-    glm::mat4 proj = glm::perspective(glm::radians(45.f),
-        float(viewportW) / viewportH, .1f, 100.f);
+    glm::mat4 proj = glm::perspective(glm::radians(75.f),
+        float(viewportW) / viewportH, 0.1f, 10000.f);
 
     model = glm::translate(glm::mat4(1.0f), lightPos);
     model = glm::scale(model, glm::vec3(0.2f));
@@ -150,6 +159,13 @@ void GLEngine::draw() {
     glDrawArrays(GL_TRIANGLES, 0, lightMesh.vertexCount);
     glBindVertexArray(0);
 
+
+    pipelines["model"].shader.use();
+    pipelines["model"].shader.setMat4("model", model);
+    pipelines["model"].shader.setMat4("view", view);
+    pipelines["model"].shader.setMat4("projection", proj);
+    sceneModel.draw(pipelines["model"].shader);
+    
     model = glm::mat4(1.0f);
     pipelines["object"].apply();
     pipelines["object"].shader.setInt("material.diffuse", 0);
@@ -221,6 +237,7 @@ void GLEngine::draw() {
         glDrawArrays(GL_TRIANGLES, 0, objectMesh.vertexCount);
     }
     glBindVertexArray(0);
+
 }
 
 void GLEngine::cleanup() {
