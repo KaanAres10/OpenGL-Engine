@@ -25,16 +25,18 @@ private:
 	GLMesh        planeMesh;
 	GLMesh        objectMesh;
 	GLMesh        lightMesh;
-
+	GLMesh        quadMesh;
 
 	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
 
+	GLTexture     wallTex, faceTex, containerTex,
+		containerSpecularTex, floorTex, grassTex, windowTex;
 
-	GLTexture     wallTex, faceTex, containerTex, containerSpecularTex, floorTex;
 	std::vector<glm::vec3> cubePositions;
 	std::vector<glm::vec3> pointLightPositions;
 	Model sceneModel;
 
+	vector<glm::vec3> vegetation;
 
 	glm::mat4 model;
 	glm::mat4 view;

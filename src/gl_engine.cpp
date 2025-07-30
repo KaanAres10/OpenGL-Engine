@@ -9,6 +9,7 @@
 #include "imgui.h"
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl3.h"
+#include <map>
 
 
 bool GLEngine::init(int w, int h) {
@@ -52,6 +53,8 @@ bool GLEngine::init(int w, int h) {
 
     glEnable(GL_STENCIL_TEST);
 
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     pipelines["light"] = GLPipeline{
         Shader("light.vert", "light.frag"),
@@ -95,6 +98,16 @@ bool GLEngine::init(int w, int h) {
     };
 
 
+    pipelines["blending"] = GLPipeline{
+    Shader("blending.vert", "blending.frag"),
+    BlendMode::Alpha,
+    true,
+    GL_BACK,
+    GL_FILL
+    };
+
+
+
     lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
@@ -103,10 +116,13 @@ bool GLEngine::init(int w, int h) {
 
     planeMesh = glloader::loadPlaneWithTexture_Normal();
 
+    quadMesh = glloader::loadQuadWithTexture_Normal();
+
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
     floorTex = glloader::loadTextureMirror("assets/textures/floor.jpeg");
-
+    grassTex = glloader::loadTexture("assets/textures/grass.png");
+    windowTex = glloader::loadTexture("assets/textures/blending_transparent_window.png");
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
 
@@ -130,12 +146,18 @@ bool GLEngine::init(int w, int h) {
         glm::vec3(0.0f,  0.0f, -3.0f)
     };
 
+    vegetation.push_back(glm::vec3(-1.5f, 0.0f, -0.48f));
+    vegetation.push_back(glm::vec3(1.5f, 0.0f, 0.51f));
+    vegetation.push_back(glm::vec3(0.0f, 0.0f, 0.7f));
+    vegetation.push_back(glm::vec3(-0.3f, 0.0f, -2.3f));
+    vegetation.push_back(glm::vec3(0.5f, 0.0f, -0.6f));
 
-    camera.position = { -27.6566, 3473.03, -80.017};
-    camera.pitch = { -1.53734 };
-    camera.yaw = { 0.00200017 };
+
+    camera.position = { 0,0,5 };
+    camera.pitch = { 0.040 };
+    camera.yaw = { 0.2 };
     camera.front = { 0.0f, 0.0f, -1.0f };
-    camera.movementSpeed = 500.0f;
+    camera.movementSpeed = 50.0f;
 
     viewportW = w; viewportH = h;
     return true;
@@ -183,28 +205,56 @@ void GLEngine::draw() {
     proj = glm::perspective(glm::radians(75.f),
         float(viewportW) / viewportH, 1.0f, 10000.f);
 
-    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+    
+    pipelines["blending"].shader.use();
+    pipelines["blending"].setModel(model);
+    pipelines["blending"].setView(view);
+    pipelines["blending"].setProj(proj);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
+    glBindVertexArray(cubeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
+    glBindVertexArray(0);
 
-    glStencilMask(0xFF);
-    glStencilFunc(GL_ALWAYS, 1, 0xFF);
-    glEnable(GL_DEPTH_TEST);
+    model = glm::translate(model, glm::vec3(0.5, 0.0, 2.0));
+    pipelines["blending"].shader.use();
+    pipelines["blending"].setModel(model);
+    pipelines["blending"].setView(view);
+    pipelines["blending"].setProj(proj);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
+    glBindVertexArray(cubeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
+    glBindVertexArray(0);
+
+    model = glm::mat4(1.0f);
+    pipelines["blending"].shader.use();
+    pipelines["blending"].setModel(model);
+    pipelines["blending"].setView(view);
+    pipelines["blending"].setProj(proj);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
+    glBindVertexArray(planeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
+    glBindVertexArray(0);
+
+
+    std::map<float, glm::vec3> sorted;
+    for (GLuint i = 0; i < vegetation.size(); i++)
+    {
+        float distance = glm::length(camera.position - vegetation[i]);
+        sorted[distance] = vegetation[i];
+    }
 
     drawScene();
 
-    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-    glStencilMask(0x00);
-    glDisable(GL_DEPTH_TEST);
-    model = glm::mat4(1.0f);
-    model = glm::scale(model, glm::vec3(1.02f, 1.02f, 1.02f));
-    pipelines["stencil"].shader.use();
-    pipelines["stencil"].shader.setMat4("model", model);
-    pipelines["stencil"].shader.setMat4("view", view);
-    pipelines["stencil"].shader.setMat4("projection", proj);
-    sceneModel.draw(pipelines["stencil"].shader);
+    pipelines["blending"].shader.use();
+    glBindVertexArray(quadMesh.vao);
+    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D, windowTex.id);
+    for (std::map<float, glm::vec3>::reverse_iterator it = sorted.rbegin(); it != sorted.rend(); it++) {
+        model = glm::mat4(1.0f);
+        model = glm::translate(model, it->second);
+        pipelines["blending"].setModel(model);
+        glDrawArrays(GL_TRIANGLES, 0, quadMesh.vertexCount);
+    }
 
-
-    glStencilMask(0xFF);
-    glStencilFunc(GL_ALWAYS, 1, 0xFF);
 }
 
 void GLEngine::drawScene()

@@ -42,6 +42,8 @@ GLTexture glloader::loadTexture(const std::string& path) {
     }
     else if (nrChannels == 4) {
         internalFormat = dataFormat = GL_RGBA;
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     else {
         stbi_image_free(data);
@@ -99,6 +101,8 @@ GLTexture glloader::loadTextureMirror(const std::string& path) {
     }
     else if (nrChannels == 4) {
         internalFormat = dataFormat = GL_RGBA;
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     else {
         stbi_image_free(data);
@@ -123,6 +127,40 @@ GLTexture glloader::loadTextureMirror(const std::string& path) {
     return tex;
 }
 
+GLMesh glloader::loadQuadWithTexture_Normal() {
+    GLMesh m{};
+    float quadVertices[] = {
+        // positions        // normals         // texCoords
+         0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f,
+         0.0f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f,
+         1.0f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f,
+
+         0.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 1.0f,
+         1.0f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f,
+         1.0f,  0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &m.vao);
+    glBindVertexArray(m.vao);
+
+    glGenBuffers(1, &m.vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, m.vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+
+    glBindVertexArray(0);
+
+    m.vertexCount = 6;
+    return m;
+}
 
 GLMesh glloader::loadCubeWithTexture() {
     GLMesh m{};
