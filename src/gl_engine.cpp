@@ -44,7 +44,6 @@ bool GLEngine::init(int w, int h) {
     glViewport(0, 0, w, h);
     glEnable(GL_DEPTH_TEST);
 
-
     pipelines["light"] = GLPipeline{
         Shader("light.vert", "light.frag"),
         BlendMode::Alpha,
@@ -70,11 +69,26 @@ bool GLEngine::init(int w, int h) {
         GL_FILL
     };
 
+    pipelines["depth"] = GLPipeline{
+       Shader("depth.vert", "depth.frag"),
+       BlendMode::Alpha,
+       true,
+       GL_BACK,
+       GL_FILL
+    };
+
     lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
+
+    cubeMesh = glloader::loadCubeWithTexture_Normal();
+
+    planeMesh = glloader::loadPlaneWithTexture_Normal();
+
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
+    floorTex = glloader::loadTextureMirror("assets/textures/floor.jpeg");
+
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
 
@@ -98,10 +112,13 @@ bool GLEngine::init(int w, int h) {
         glm::vec3(0.0f,  0.0f, -3.0f)
     };
 
+    glDepthFunc(GL_LESS);
+
     camera.position = { 0,0,5 };
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
     camera.front = { 0.0f, 0.0f, -1.0f };
+    camera.movementSpeed = 100.0f;
 
     viewportW = w; viewportH = h;
     return true;
@@ -144,11 +161,60 @@ void GLEngine::draw() {
     glClearColor(.2f, .2f, .2f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glm::mat4 model = glm::mat4(1.0f);
-    glm::mat4 view = camera.getViewMatrix();
-    glm::mat4 proj = glm::perspective(glm::radians(75.f),
-        float(viewportW) / viewportH, 0.1f, 10000.f);
+    model = glm::mat4(1.0f);
+    view = camera.getViewMatrix();
+    proj = glm::perspective(glm::radians(75.f),
+        float(viewportW) / viewportH, 1.0f, 10000.f);
 
+    pipelines["depth"].shader.use();
+    pipelines["depth"].setModel(model);
+    pipelines["depth"].setView(view);
+    pipelines["depth"].setProj(proj);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
+    glBindVertexArray(cubeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
+    glBindVertexArray(0);
+
+    model = glm::translate(model, glm::vec3(0.5, 0.0, 2.0));
+    pipelines["depth"].shader.use();
+    pipelines["depth"].setModel(model);
+    pipelines["depth"].setView(view);
+    pipelines["depth"].setProj(proj);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
+    glBindVertexArray(cubeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
+    glBindVertexArray(0);
+    
+
+    pipelines["depth"].shader.use();
+    pipelines["depth"].setModel(model);
+    pipelines["depth"].setView(view);
+    pipelines["depth"].setProj(proj);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
+    glBindVertexArray(planeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
+    glBindVertexArray(0);
+
+
+    drawScene();
+
+}
+
+void GLEngine::drawScene()
+{
+    model = glm::mat4(1.0f);
+
+    pipelines["depth"].shader.use();
+    pipelines["depth"].shader.setMat4("model", model);
+    pipelines["depth"].shader.setMat4("view", view);
+    pipelines["depth"].shader.setMat4("projection", proj);
+
+    sceneModel.draw(pipelines["depth"].shader);
+}
+
+void GLEngine::drawLight()
+{
+    model = glm::mat4(1.0f);
     model = glm::translate(glm::mat4(1.0f), lightPos);
     model = glm::scale(model, glm::vec3(0.2f));
     pipelines["light"].apply();
@@ -158,14 +224,10 @@ void GLEngine::draw() {
     glBindVertexArray(lightMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, lightMesh.vertexCount);
     glBindVertexArray(0);
+}
 
-
-    pipelines["model"].shader.use();
-    pipelines["model"].shader.setMat4("model", model);
-    pipelines["model"].shader.setMat4("view", view);
-    pipelines["model"].shader.setMat4("projection", proj);
-    sceneModel.draw(pipelines["model"].shader);
-    
+void GLEngine::drawCubes()
+{
     model = glm::mat4(1.0f);
     pipelines["object"].apply();
     pipelines["object"].shader.setInt("material.diffuse", 0);
@@ -194,7 +256,7 @@ void GLEngine::draw() {
         pipelines["object"].shader.setVec3(
             ("pointLights[" + idx + "].ambient").c_str(),
             glm::vec3(0.05f)
-        );       
+        );
         pipelines["object"].shader.setVec3(
             ("pointLights[" + idx + "].diffuse").c_str(),
             glm::vec3(0.8f)
@@ -216,7 +278,7 @@ void GLEngine::draw() {
             0.032f
         );
     }
- 
+
     pipelines["object"].shader.setVec3("spotLight.position", camera.position);
     pipelines["object"].shader.setVec3("spotLight.direction", camera.front);
     pipelines["object"].shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(12.5f)));
@@ -237,12 +299,13 @@ void GLEngine::draw() {
         glDrawArrays(GL_TRIANGLES, 0, objectMesh.vertexCount);
     }
     glBindVertexArray(0);
-
 }
+
 
 void GLEngine::cleanup() {
     glDeleteProgram(pipelines["light"].shader.ID);
     glDeleteProgram(pipelines["object"].shader.ID);
+    glDeleteProgram(pipelines["model"].shader.ID);
     glDeleteVertexArrays(1, &lightMesh.vao);
     glDeleteVertexArrays(1, &objectMesh.vao);
     glDeleteBuffers(1, &lightMesh.vbo);

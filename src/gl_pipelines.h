@@ -48,4 +48,12 @@ struct GLPipeline {
     void setModel(const glm::mat4& model) const {
         shader.setMat4("model", model);
     }
+
+    void setView(const glm::mat4& view) const {
+        shader.setMat4("view", view);
+    }
+
+    void setProj(const glm::mat4& projection) const {
+        shader.setMat4("projection", projection);
+    }
 };
