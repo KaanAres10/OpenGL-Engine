@@ -13,6 +13,9 @@
 
 bool GLEngine::init(int w, int h) {
     if (SDL_Init(SDL_INIT_VIDEO)) return false;
+
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+
     window = SDL_CreateWindow("GL Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     glContext = SDL_GL_CreateContext(window);
@@ -42,7 +45,13 @@ bool GLEngine::init(int w, int h) {
     }
 
     glViewport(0, 0, w, h);
+
+
     glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+
+    glEnable(GL_STENCIL_TEST);
+
 
     pipelines["light"] = GLPipeline{
         Shader("light.vert", "light.frag"),
@@ -76,6 +85,15 @@ bool GLEngine::init(int w, int h) {
        GL_BACK,
        GL_FILL
     };
+
+    pipelines["stencil"] = GLPipeline{
+    Shader("stencil.vert", "stencil.frag"),
+    BlendMode::Alpha,
+    true,
+    GL_BACK,
+    GL_FILL
+    };
+
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
@@ -112,13 +130,12 @@ bool GLEngine::init(int w, int h) {
         glm::vec3(0.0f,  0.0f, -3.0f)
     };
 
-    glDepthFunc(GL_LESS);
 
-    camera.position = { 0,0,5 };
-    camera.pitch = { 0.040 };
-    camera.yaw = { 0.2 };
+    camera.position = { -27.6566, 3473.03, -80.017};
+    camera.pitch = { -1.53734 };
+    camera.yaw = { 0.00200017 };
     camera.front = { 0.0f, 0.0f, -1.0f };
-    camera.movementSpeed = 100.0f;
+    camera.movementSpeed = 500.0f;
 
     viewportW = w; viewportH = h;
     return true;
@@ -159,57 +176,47 @@ void GLEngine::update(float dt) {
 
 void GLEngine::draw() {
     glClearColor(.2f, .2f, .2f, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     model = glm::mat4(1.0f);
     view = camera.getViewMatrix();
     proj = glm::perspective(glm::radians(75.f),
         float(viewportW) / viewportH, 1.0f, 10000.f);
 
-    pipelines["depth"].shader.use();
-    pipelines["depth"].setModel(model);
-    pipelines["depth"].setView(view);
-    pipelines["depth"].setProj(proj);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
-    glBindVertexArray(cubeMesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
-    glBindVertexArray(0);
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
-    model = glm::translate(model, glm::vec3(0.5, 0.0, 2.0));
-    pipelines["depth"].shader.use();
-    pipelines["depth"].setModel(model);
-    pipelines["depth"].setView(view);
-    pipelines["depth"].setProj(proj);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
-    glBindVertexArray(cubeMesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
-    glBindVertexArray(0);
-    
-
-    pipelines["depth"].shader.use();
-    pipelines["depth"].setModel(model);
-    pipelines["depth"].setView(view);
-    pipelines["depth"].setProj(proj);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
-    glBindVertexArray(planeMesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
-    glBindVertexArray(0);
-
+    glStencilMask(0xFF);
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
+    glEnable(GL_DEPTH_TEST);
 
     drawScene();
 
+    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+    glStencilMask(0x00);
+    glDisable(GL_DEPTH_TEST);
+    model = glm::mat4(1.0f);
+    model = glm::scale(model, glm::vec3(1.02f, 1.02f, 1.02f));
+    pipelines["stencil"].shader.use();
+    pipelines["stencil"].shader.setMat4("model", model);
+    pipelines["stencil"].shader.setMat4("view", view);
+    pipelines["stencil"].shader.setMat4("projection", proj);
+    sceneModel.draw(pipelines["stencil"].shader);
+
+
+    glStencilMask(0xFF);
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
 }
 
 void GLEngine::drawScene()
 {
     model = glm::mat4(1.0f);
 
-    pipelines["depth"].shader.use();
-    pipelines["depth"].shader.setMat4("model", model);
-    pipelines["depth"].shader.setMat4("view", view);
-    pipelines["depth"].shader.setMat4("projection", proj);
+    pipelines["model"].shader.use();
+    pipelines["model"].shader.setMat4("model", model);
+    pipelines["model"].shader.setMat4("view", view);
+    pipelines["model"].shader.setMat4("projection", proj);
 
-    sceneModel.draw(pipelines["depth"].shader);
+    sceneModel.draw(pipelines["model"].shader);
 }
 
 void GLEngine::drawLight()
