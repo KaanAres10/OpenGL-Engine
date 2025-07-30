@@ -60,7 +60,7 @@ bool GLEngine::init(int w, int h) {
         Shader("light.vert", "light.frag"),
         BlendMode::Alpha,
         true,
-        GL_NONE,
+        GL_BACK,
         GL_FILL
     };
 
@@ -69,7 +69,7 @@ bool GLEngine::init(int w, int h) {
         Shader("object.vert", "object.frag"),
         BlendMode::Alpha,
         true,
-        GL_NONE,
+        GL_BACK,
         GL_FILL
     };
 
@@ -157,7 +157,7 @@ bool GLEngine::init(int w, int h) {
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
     camera.front = { 0.0f, 0.0f, -1.0f };
-    camera.movementSpeed = 50.0f;
+    camera.movementSpeed = 5.0f;
 
     viewportW = w; viewportH = h;
     return true;
@@ -206,7 +206,7 @@ void GLEngine::draw() {
         float(viewportW) / viewportH, 1.0f, 10000.f);
 
     
-    pipelines["blending"].shader.use();
+    pipelines["blending"].apply();
     pipelines["blending"].setModel(model);
     pipelines["blending"].setView(view);
     pipelines["blending"].setProj(proj);
@@ -261,7 +261,7 @@ void GLEngine::drawScene()
 {
     model = glm::mat4(1.0f);
 
-    pipelines["model"].shader.use();
+    pipelines["model"].apply();
     pipelines["model"].shader.setMat4("model", model);
     pipelines["model"].shader.setMat4("view", view);
     pipelines["model"].shader.setMat4("projection", proj);
