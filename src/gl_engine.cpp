@@ -106,6 +106,14 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["framebuffer"] = GLPipeline{
+    Shader("framebuffer.vert", "framebuffer.frag"),
+    BlendMode::Alpha,
+    true,
+    GL_BACK,
+    GL_FILL
+    };
+
 
 
     lightMesh = glloader::loadCubeWithoutTexture();
@@ -116,7 +124,10 @@ bool GLEngine::init(int w, int h) {
 
     planeMesh = glloader::loadPlaneWithTexture_Normal();
 
+    screenQuadMesh = glloader::loadQuadWithTextureNDC();
+
     quadMesh = glloader::loadQuadWithTexture_Normal();
+
 
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
@@ -157,9 +168,20 @@ bool GLEngine::init(int w, int h) {
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
     camera.front = { 0.0f, 0.0f, -1.0f };
-    camera.movementSpeed = 5.0f;
+    camera.movementSpeed = 100.0f;
 
     viewportW = w; viewportH = h;
+
+    frameBufferSpec.Width = w;
+    frameBufferSpec.Height = h;
+
+    frameBufferSpec.Attachments = {
+        {FramebufferAttachmentType::Texture2D, GL_RGB8, GL_COLOR_ATTACHMENT0},
+        {FramebufferAttachmentType::Renderbuffer, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL_ATTACHMENT}
+    };
+
+    sceneFrameBuffer = std::make_unique<Framebuffer>(frameBufferSpec);
+
     return true;
 }
 
@@ -189,6 +211,7 @@ void GLEngine::processEvent(SDL_Event& e) {
         viewportW = e.window.data1;
         viewportH = e.window.data2;
         glViewport(0, 0, viewportW, viewportH);
+        sceneFrameBuffer->Resize(viewportW, viewportH);
     }
 }
 
@@ -197,6 +220,10 @@ void GLEngine::update(float dt) {
 }
 
 void GLEngine::draw() {
+    sceneFrameBuffer->Bind();
+    glViewport(0, 0, viewportW, viewportH);
+
+    glEnable(GL_DEPTH_TEST);
     glClearColor(.2f, .2f, .2f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -255,6 +282,19 @@ void GLEngine::draw() {
         glDrawArrays(GL_TRIANGLES, 0, quadMesh.vertexCount);
     }
 
+    sceneFrameBuffer->Unbind();
+
+    glViewport(0, 0, viewportW, viewportH);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    pipelines["framebuffer"].shader.use();
+    glBindVertexArray(screenQuadMesh.vao);
+    glDisable(GL_DEPTH_TEST);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, sceneFrameBuffer->GetTextureID(0));
+    glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
+    glBindVertexArray(0);
 }
 
 void GLEngine::drawScene()
@@ -371,6 +411,9 @@ void GLEngine::cleanup() {
     glDeleteTextures(1, &faceTex.id);
     glDeleteTextures(1, &containerTex.id);
     glDeleteTextures(1, &containerSpecularTex.id);
+
+    sceneFrameBuffer.reset();
+
     SDL_GL_DeleteContext(glContext);
     SDL_DestroyWindow(window);
     SDL_Quit();

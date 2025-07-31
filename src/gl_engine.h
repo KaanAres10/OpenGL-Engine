@@ -7,6 +7,7 @@
 #include <shader.h>
 #include <unordered_map>
 #include <model.h>
+#include "framebuffer.h"
 
 class GLEngine {
 public:
@@ -26,6 +27,8 @@ private:
 	GLMesh        objectMesh;
 	GLMesh        lightMesh;
 	GLMesh        quadMesh;
+	GLMesh        screenQuadMesh;
+
 
 	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
 
@@ -37,6 +40,9 @@ private:
 	Model sceneModel;
 
 	vector<glm::vec3> vegetation;
+
+	FramebufferSpecification frameBufferSpec;
+	std::unique_ptr<Framebuffer> sceneFrameBuffer;
 
 	glm::mat4 model;
 	glm::mat4 view;
