@@ -114,6 +114,21 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["cubemap"] = GLPipeline{
+    Shader("cubemap.vert", "cubemap.frag"),
+    BlendMode::Alpha,
+    true,
+    GL_BACK,
+    GL_FILL
+    };
+
+    pipelines["environment_map"] = GLPipeline{
+    Shader("environment_map.vert", "environment_map.frag"),
+    BlendMode::Alpha,
+    true,
+    GL_BACK,
+    GL_FILL
+    };
 
 
     lightMesh = glloader::loadCubeWithoutTexture();
@@ -128,12 +143,23 @@ bool GLEngine::init(int w, int h) {
 
     quadMesh = glloader::loadQuadWithTexture_Normal();
 
+    skyBoxMesh = glloader::loadCubeOnlyPosition();
+
+    environmentCubeMesh = glloader::loadCubeWithNormal();
 
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
     floorTex = glloader::loadTextureMirror("assets/textures/floor.jpeg");
     grassTex = glloader::loadTexture("assets/textures/grass.png");
     windowTex = glloader::loadTexture("assets/textures/blending_transparent_window.png");
+    cubeMapTex = glloader::loadCubemap({
+        "assets/textures/sky_2/px.png",
+        "assets/textures/sky_2/nx.png", 
+        "assets/textures/sky_2/py.png", 
+        "assets/textures/sky_2/ny.png", 
+        "assets/textures/sky_2/pz.png", 
+        "assets/textures/sky_2/nz.png"  
+        });
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
 
@@ -227,12 +253,13 @@ void GLEngine::draw() {
     glClearColor(.2f, .2f, .2f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
+
     model = glm::mat4(1.0f);
     view = camera.getViewMatrix();
     proj = glm::perspective(glm::radians(75.f),
-        float(viewportW) / viewportH, 1.0f, 10000.f);
+        float(viewportW) / viewportH, 0.1f, 10000.f);
 
-    
+
     pipelines["blending"].apply();
     pipelines["blending"].setModel(model);
     pipelines["blending"].setView(view);
@@ -274,13 +301,44 @@ void GLEngine::draw() {
 
     pipelines["blending"].shader.use();
     glBindVertexArray(quadMesh.vao);
-    glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D, windowTex.id);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, windowTex.id);
     for (std::map<float, glm::vec3>::reverse_iterator it = sorted.rbegin(); it != sorted.rend(); it++) {
         model = glm::mat4(1.0f);
         model = glm::translate(model, it->second);
         pipelines["blending"].setModel(model);
         glDrawArrays(GL_TRIANGLES, 0, quadMesh.vertexCount);
     }
+
+    glDisable(GL_CULL_FACE);
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(0.0f, 50.0f, 0.0f));
+    model = glm::scale(model, glm::vec3(20.0f, 20.0f, 20.0f));
+    pipelines["environment_map"].shader.use();
+    pipelines["environment_map"].setModel(model);
+    pipelines["environment_map"].setView(view);
+    pipelines["environment_map"].setProj(proj);
+    pipelines["environment_map"].shader.setFloat("skybox", 0);
+    pipelines["environment_map"].shader.setVec3("cameraPos", camera.position);
+    glBindVertexArray(environmentCubeMesh.vao);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMapTex.id);
+    glDrawArrays(GL_TRIANGLES, 0, environmentCubeMesh.vertexCount);
+    glBindVertexArray(0);
+    glEnable(GL_CULL_FACE);
+
+    view = glm::mat4(glm::mat3(view));
+    glDepthMask(GL_FALSE);
+    glDepthFunc(GL_LEQUAL);
+    pipelines["cubemap"].shader.use();
+    pipelines["cubemap"].setView(view);
+    pipelines["cubemap"].setProj(proj);
+    glBindVertexArray(skyBoxMesh.vao);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMapTex.id);
+    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
+    glBindVertexArray(0);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+    view = camera.getViewMatrix();
+
 
     sceneFrameBuffer->Unbind();
 
