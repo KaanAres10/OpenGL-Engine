@@ -37,7 +37,7 @@ private:
 	GLMesh        screenQuadMesh;
 	GLMesh        skyBoxMesh;
 	GLMesh        environmentCubeMesh;
-
+	GLMesh        pointsMesh;
 
 	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
 
@@ -64,6 +64,7 @@ private:
 	void draw();
 
 	void drawScene();
+	void drawSceneNormal();
 	void drawLight();
 	void drawCubes();
 };

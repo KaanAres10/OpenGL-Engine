@@ -42,6 +42,7 @@ file(GLOB_RECURSE SHADER_FILES
     CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/shaders/*.vert"
     "${CMAKE_SOURCE_DIR}/shaders/*.frag"
+    "${CMAKE_SOURCE_DIR}/shaders/*.geom" 
 )
 
 source_group(

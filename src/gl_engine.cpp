@@ -78,7 +78,7 @@ bool GLEngine::init(int w, int h) {
         BlendMode::Alpha,
         true,
         GL_BACK,
-        GL_FILL
+        GL_POINT
     };
 
     pipelines["depth"] = GLPipeline{
@@ -102,7 +102,7 @@ bool GLEngine::init(int w, int h) {
     Shader("blending.vert", "blending.frag"),
     BlendMode::Alpha,
     true,
-    GL_BACK,
+    GL_NONE,
     GL_FILL
     };
 
@@ -130,6 +130,15 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["geometry"] = GLPipeline{
+    Shader("geometry.vert", "geometry.geom", "geometry.frag"),
+    BlendMode::Alpha,
+    true,
+    GL_BACK,
+    GL_FILL
+    };
+
+
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
@@ -146,6 +155,8 @@ bool GLEngine::init(int w, int h) {
     skyBoxMesh = glloader::loadCubeOnlyPosition();
 
     environmentCubeMesh = glloader::loadCubeWithNormal();
+
+    pointsMesh = glloader::loadPointsNDC();
 
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
@@ -295,7 +306,9 @@ void GLEngine::draw() {
     }
     drawScene();
 
-    pipelines["blending"].shader.use();
+    drawSceneNormal();
+
+    pipelines["blending"].apply();
     glBindVertexArray(quadMesh.vao);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, windowTex.id);
     for (std::map<float, glm::vec3>::reverse_iterator it = sorted.rbegin(); it != sorted.rend(); it++) {
@@ -353,13 +366,26 @@ void GLEngine::draw() {
 
 void GLEngine::drawScene()
 {
+    glPointSize(8.0f);
     model = glm::mat4(1.0f);
-
     pipelines["model"].apply();
     pipelines["model"].shader.setMat4("model", model);
 
     sceneModel.draw(pipelines["model"].shader);
 }
+
+void GLEngine::drawSceneNormal()
+{
+    model = glm::mat4(1.0f);
+    pipelines["geometry"].shader.use();
+    pipelines["geometry"].shader.setMat4("model", model);
+    pipelines["geometry"].shader.setMat4("view", view);
+    pipelines["geometry"].shader.setMat4("projection", proj);
+
+
+    sceneModel.draw(pipelines["geometry"].shader);
+}
+
 
 void GLEngine::drawLight()
 {

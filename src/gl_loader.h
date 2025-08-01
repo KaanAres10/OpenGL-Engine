@@ -13,6 +13,7 @@ namespace glloader {
 	GLMesh loadPlaneWithTexture();
 	GLMesh loadPlaneWithTexture_Normal();
 	GLMesh loadCubeOnlyPosition();
+	GLMesh loadPointsNDC();
 	GLMesh loadCubeWithoutTexture();
 	GLMesh loadCubeWithNormal();
 	GLMesh loadCubeWithTexture_Normal();

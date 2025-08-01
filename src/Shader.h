@@ -18,32 +18,49 @@ public:
 	GLuint ID;
 
     Shader() = default;
-    Shader(const char* vertexPath, const char* fragmentPath) {
+    Shader(const char* vertexPath, const char* fragmentPath)
+        : Shader(vertexPath, nullptr, fragmentPath) {}
+
+    Shader(const char* vertexPath, const char* geometryPath, const char* fragmentPath) {
         std::string vertCode = readFile(vertexPath);
         std::string fragCode = readFile(fragmentPath);
         const char* vSrc = vertCode.c_str();
         const char* fSrc = fragCode.c_str();
 
-        // compile vertex shader
+        std::string geomCode;
+        const char* gSrc = nullptr;
+        if (geometryPath) {
+            geomCode = readFile(geometryPath);
+            gSrc = geomCode.c_str();
+        }
+
         GLuint vs = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(vs, 1, &vSrc, nullptr);
         glCompileShader(vs);
         checkCompileErrors(vs, "VERTEX");
 
-        // compile fragment shader
+        GLuint gs = 0;
+        if (gSrc) {
+            gs = glCreateShader(GL_GEOMETRY_SHADER);
+            glShaderSource(gs, 1, &gSrc, nullptr);
+            glCompileShader(gs);
+            checkCompileErrors(gs, "GEOMETRY");
+        }
+
         GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fs, 1, &fSrc, nullptr);
         glCompileShader(fs);
         checkCompileErrors(fs, "FRAGMENT");
 
-        // link program
         ID = glCreateProgram();
         glAttachShader(ID, vs);
+        if (gSrc) glAttachShader(ID, gs);
         glAttachShader(ID, fs);
         glLinkProgram(ID);
         checkCompileErrors(ID, "PROGRAM");
 
         glDeleteShader(vs);
+        if (gSrc) glDeleteShader(gs);
         glDeleteShader(fs);
     }
 
