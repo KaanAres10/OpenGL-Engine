@@ -55,7 +55,7 @@ bool GLEngine::init(int w, int h) {
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
+    
     pipelines["light"] = GLPipeline{
         Shader("light.vert", "light.frag"),
         BlendMode::Alpha,
@@ -208,6 +208,8 @@ bool GLEngine::init(int w, int h) {
 
     sceneFrameBuffer = std::make_unique<Framebuffer>(frameBufferSpec);
 
+    uboMatrices = std::make_unique<UniformBuffer<Matrices>>(0, GL_DYNAMIC_DRAW);
+
     return true;
 }
 
@@ -253,17 +255,16 @@ void GLEngine::draw() {
     glClearColor(.2f, .2f, .2f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
-
     model = glm::mat4(1.0f);
     view = camera.getViewMatrix();
     proj = glm::perspective(glm::radians(75.f),
         float(viewportW) / viewportH, 0.1f, 10000.f);
+    uboMatrices->updateMember(0, proj);
+    uboMatrices->updateMember(sizeof(glm::mat4), view);
 
 
     pipelines["blending"].apply();
     pipelines["blending"].setModel(model);
-    pipelines["blending"].setView(view);
-    pipelines["blending"].setProj(proj);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
     glBindVertexArray(cubeMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
@@ -271,9 +272,7 @@ void GLEngine::draw() {
 
     model = glm::translate(model, glm::vec3(0.5, 0.0, 2.0));
     pipelines["blending"].shader.use();
-    pipelines["blending"].setModel(model);
-    pipelines["blending"].setView(view);
-    pipelines["blending"].setProj(proj);
+    pipelines["blending"].setModel(model);;
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
     glBindVertexArray(cubeMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
@@ -282,8 +281,6 @@ void GLEngine::draw() {
     model = glm::mat4(1.0f);
     pipelines["blending"].shader.use();
     pipelines["blending"].setModel(model);
-    pipelines["blending"].setView(view);
-    pipelines["blending"].setProj(proj);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
     glBindVertexArray(planeMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
@@ -296,7 +293,6 @@ void GLEngine::draw() {
         float distance = glm::length(camera.position - vegetation[i]);
         sorted[distance] = vegetation[i];
     }
-
     drawScene();
 
     pipelines["blending"].shader.use();
@@ -346,7 +342,7 @@ void GLEngine::draw() {
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    pipelines["framebuffer"].shader.use();
+    pipelines["framebuffer"].apply();
     glBindVertexArray(screenQuadMesh.vao);
     glDisable(GL_DEPTH_TEST);
     glActiveTexture(GL_TEXTURE0);
@@ -361,8 +357,6 @@ void GLEngine::drawScene()
 
     pipelines["model"].apply();
     pipelines["model"].shader.setMat4("model", model);
-    pipelines["model"].shader.setMat4("view", view);
-    pipelines["model"].shader.setMat4("projection", proj);
 
     sceneModel.draw(pipelines["model"].shader);
 }

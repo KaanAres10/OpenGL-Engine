@@ -7,6 +7,7 @@ file(GLOB_RECURSE ENGINE_CPP
 file(GLOB_RECURSE ENGINE_HDR
     CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/*.h"
+    "${CMAKE_CURRENT_SOURCE_DIR}/*.hpp"
 )
 
 add_executable(OpenGL-Engine

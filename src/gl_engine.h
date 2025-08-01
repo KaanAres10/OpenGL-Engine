@@ -8,6 +8,13 @@
 #include <unordered_map>
 #include <model.h>
 #include "framebuffer.h"
+#include "uniformbuffer.hpp"
+
+struct alignas(16) Matrices {
+	glm::mat4 projection;
+	glm::mat4 view;
+};
+
 
 class GLEngine {
 public:
@@ -45,6 +52,8 @@ private:
 
 	FramebufferSpecification frameBufferSpec;
 	std::unique_ptr<Framebuffer> sceneFrameBuffer;
+
+	std::unique_ptr<UniformBuffer<Matrices>> uboMatrices;
 
 	glm::mat4 model;
 	glm::mat4 view;
