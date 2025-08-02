@@ -9,6 +9,7 @@ namespace glloader {
 	GLTexture loadCubemap(const std::vector<std::string>& faces);
 	GLMesh loadQuadWithTexture_Normal();
 	GLMesh loadQuadWithTextureNDC();
+	GLMesh loadQuadWithColorNDC();
 	GLMesh loadCubeWithTexture();
 	GLMesh loadPlaneWithTexture();
 	GLMesh loadPlaneWithTexture_Normal();

@@ -31,8 +31,14 @@ public:
 	Mesh(vector<Vertex> vertices, vector<GLuint> inidices, vector<Texture> textures);
 	void draw(Shader& shader);
 
+	void setInstanceData(const std::vector<glm::mat4>& models);
+
+	void drawInstanced(Shader& shader, GLsizei instanceCount);
+
 private:
 	unsigned int vao, vbo, ebo;
+
+	GLuint instanceVbo = 0;
 
 	void setupMesh();
 };

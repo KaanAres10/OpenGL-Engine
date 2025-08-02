@@ -16,6 +16,11 @@ public:
 	void draw(Shader& shader);
 
 	void loadModel(string path);
+
+	void setInstanceData(const std::vector<glm::mat4>& models);
+
+	void drawInstanced(Shader& shader, GLsizei count);
+
 private:
 
 	vector<Texture> textures_loaded;

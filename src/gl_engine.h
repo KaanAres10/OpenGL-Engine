@@ -16,6 +16,15 @@ struct alignas(16) Matrices {
 };
 
 
+struct InstanceGrid {
+	unsigned int           N = 100;         
+	unsigned int           gridSize = 20;  
+	float                  spacing = 15.0f;   
+	float                  halfExt = (gridSize - 1) * 0.5f * spacing;  
+	std::vector<glm::mat4> modelMatrices;
+};
+
+
 class GLEngine {
 public:
 	bool init(int w, int h);
@@ -38,6 +47,8 @@ private:
 	GLMesh        skyBoxMesh;
 	GLMesh        environmentCubeMesh;
 	GLMesh        pointsMesh;
+	GLMesh        quadInstancingMesh;
+
 
 	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
 
@@ -46,7 +57,12 @@ private:
 
 	std::vector<glm::vec3> cubePositions;
 	std::vector<glm::vec3> pointLightPositions;
+	std::vector<glm::mat4> instanceModelMatrices;
+
+	InstanceGrid grid;
+
 	Model sceneModel;
+	Model plantModel;
 
 	vector<glm::vec3> vegetation;
 
@@ -64,6 +80,7 @@ private:
 	void draw();
 
 	void drawScene();
+	void drawPlants();
 	void drawSceneNormal();
 	void drawLight();
 	void drawCubes();

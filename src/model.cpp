@@ -124,6 +124,16 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 	return Mesh(vertices, indices, textures);
 }
 
+void Model::setInstanceData(const std::vector<glm::mat4>& models) {
+	for (auto& mesh : meshes)
+		mesh.setInstanceData(models);
+}
+
+void Model::drawInstanced(Shader& shader, GLsizei count) {
+	for (auto& mesh : meshes)
+		mesh.drawInstanced(shader, count);
+}
+
 vector<Texture> Model::loadMaterialTextures(aiMaterial* mat,
 	aiTextureType type,
 	const string& typeName,

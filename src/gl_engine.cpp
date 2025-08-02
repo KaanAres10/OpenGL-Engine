@@ -10,7 +10,8 @@
 #include "backends/imgui_impl_sdl2.h"
 #include "backends/imgui_impl_opengl3.h"
 #include <map>
-
+#include <random>
+#include <cmath>     
 
 bool GLEngine::init(int w, int h) {
     if (SDL_Init(SDL_INIT_VIDEO)) return false;
@@ -78,7 +79,7 @@ bool GLEngine::init(int w, int h) {
         BlendMode::Alpha,
         true,
         GL_BACK,
-        GL_POINT
+        GL_FILL
     };
 
     pipelines["depth"] = GLPipeline{
@@ -138,6 +139,13 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["instancing"] = GLPipeline{
+    Shader("instancing.vert", "instancing.frag"),
+    BlendMode::Alpha,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
 
 
     lightMesh = glloader::loadCubeWithoutTexture();
@@ -158,6 +166,8 @@ bool GLEngine::init(int w, int h) {
 
     pointsMesh = glloader::loadPointsNDC();
 
+    quadInstancingMesh = glloader::loadQuadWithColorNDC();
+
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
     floorTex = glloader::loadTextureMirror("assets/textures/floor.jpeg");
@@ -173,6 +183,8 @@ bool GLEngine::init(int w, int h) {
         });
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
+    plantModel.loadModel("assets/plant/scene.gltf");
+
 
     cubePositions = {
        {  0.0f,  0.0f,   0.0f },
@@ -200,6 +212,22 @@ bool GLEngine::init(int w, int h) {
     vegetation.push_back(glm::vec3(-0.3f, 0.0f, -2.3f));
     vegetation.push_back(glm::vec3(0.5f, 0.0f, -0.6f));
 
+
+    grid.modelMatrices.clear();
+    grid.modelMatrices.reserve(grid.N);
+    for (unsigned int i = 0; i < grid.N; ++i) {
+        unsigned int row = i / grid.gridSize;
+        unsigned int col = i % grid.gridSize;
+
+        float x = (static_cast<float>(col) * grid.spacing) - grid.halfExt;
+        float z = (static_cast<float>(row) * grid.spacing) - grid.halfExt;
+        float y = 0.0f;
+
+        glm::mat4 M = glm::translate(glm::mat4(1.0f), glm::vec3(x, y, z));
+        M = glm::scale(M, glm::vec3(0.2f));
+
+        grid.modelMatrices.emplace_back(M);
+    }
 
     camera.position = { 0,0,5 };
     camera.pitch = { 0.040 };
@@ -304,9 +332,10 @@ void GLEngine::draw() {
         float distance = glm::length(camera.position - vegetation[i]);
         sorted[distance] = vegetation[i];
     }
-    drawScene();
 
-    drawSceneNormal();
+    drawPlants();
+
+    drawScene();
 
     pipelines["blending"].apply();
     glBindVertexArray(quadMesh.vao);
@@ -372,6 +401,15 @@ void GLEngine::drawScene()
     pipelines["model"].shader.setMat4("model", model);
 
     sceneModel.draw(pipelines["model"].shader);
+}
+
+
+void GLEngine::drawPlants()
+{
+    pipelines["instancing"].shader.use();
+    plantModel.setInstanceData(grid.modelMatrices);
+    plantModel.drawInstanced(pipelines["instancing"].shader,
+        static_cast<GLsizei>(grid.N));
 }
 
 void GLEngine::drawSceneNormal()

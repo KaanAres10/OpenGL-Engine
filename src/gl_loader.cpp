@@ -255,6 +255,68 @@ GLMesh glloader::loadQuadWithTextureNDC() {
     return m;
 }
 
+GLMesh glloader::loadQuadWithColorNDC() {
+    GLMesh m{};
+    float quadVertices[] = {
+        // positions     // colors
+        -0.05f,  0.05f,  1.0f, 0.0f, 0.0f,
+         0.05f, -0.05f,  0.0f, 1.0f, 0.0f,
+        -0.05f, -0.05f,  0.0f, 0.0f, 1.0f,
+
+        -0.05f,  0.05f,  1.0f, 0.0f, 0.0f,
+         0.05f, -0.05f,  0.0f, 1.0f, 0.0f,
+         0.05f,  0.05f,  0.0f, 1.0f, 1.0f
+    };
+
+    glGenVertexArrays(1, &m.vao);
+    glBindVertexArray(m.vao);
+
+    glGenBuffers(1, &m.vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, m.vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), quadVertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(2 * sizeof(float)));
+
+    std::vector<glm::vec2> translations;
+    translations.reserve(100);
+    int index = 0;
+    float offset = 0.1f;
+    for (int y = -10; y < 10; y += 2)
+    {
+        for (int x = -10; x < 10; x += 2)
+        {
+            translations.emplace_back(
+                (float)x / 10.0f + offset,
+                (float)y / 10.0f + offset
+            );
+        }
+    }
+
+    GLuint instanceVBO;
+    glGenBuffers(1, &instanceVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+    glBufferData(GL_ARRAY_BUFFER,
+        translations.size() * sizeof(glm::vec2),
+        translations.data(),
+        GL_STATIC_DRAW
+    );
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,
+        sizeof(glm::vec2), (void*)0
+    );
+    glVertexAttribDivisor(2, 1);
+
+    glBindVertexArray(0);
+
+    m.vertexCount = 6;
+    return m;
+}
+
 
 GLMesh glloader::loadCubeWithTexture() {
     GLMesh m{};
