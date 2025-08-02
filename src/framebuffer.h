@@ -18,6 +18,7 @@ struct FramebufferAttachmentSpecification {
 struct FramebufferSpecification {
     uint32_t Width = 0;
     uint32_t Height = 0;
+    uint32_t Samples = 1;
     bool     SwapChainTarget = false;
     std::vector<FramebufferAttachmentSpecification> Attachments;
 };
@@ -32,6 +33,8 @@ public:
     void Unbind() const;
 
     void Resize(uint32_t width, uint32_t height);
+
+    uint32_t GetRendererID() const;
 
     // Returns texture ID for texture attachments only
     uint32_t GetTextureID(uint32_t index = 0) const;

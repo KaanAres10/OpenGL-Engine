@@ -18,6 +18,9 @@ bool GLEngine::init(int w, int h) {
 
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);    
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+
     window = SDL_CreateWindow("GL Engine", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         w, h, SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     glContext = SDL_GL_CreateContext(window);
@@ -56,6 +59,8 @@ bool GLEngine::init(int w, int h) {
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glEnable(GL_MULTISAMPLE);
     
     pipelines["light"] = GLPipeline{
         Shader("light.vert", "light.frag"),
@@ -147,6 +152,13 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["fxaa"] = GLPipeline{
+        Shader("fxaa.vert", "fxaa.frag"),
+        BlendMode::None,
+        false,         // no depth
+        GL_NONE,
+        GL_FILL
+    };
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
@@ -215,7 +227,7 @@ bool GLEngine::init(int w, int h) {
 
     grid.modelMatrices.clear();
     grid.modelMatrices.reserve(grid.N);
-    for (unsigned int i = 0; i < grid.N; ++i) {
+    for (GLuint i = 0; i < grid.N; ++i) {
         unsigned int row = i / grid.gridSize;
         unsigned int col = i % grid.gridSize;
 
@@ -239,6 +251,7 @@ bool GLEngine::init(int w, int h) {
 
     frameBufferSpec.Width = w;
     frameBufferSpec.Height = h;
+    frameBufferSpec.Samples = 4;
 
     frameBufferSpec.Attachments = {
         {FramebufferAttachmentType::Texture2D, GL_RGB8, GL_COLOR_ATTACHMENT0},
@@ -246,6 +259,14 @@ bool GLEngine::init(int w, int h) {
     };
 
     sceneFrameBuffer = std::make_unique<Framebuffer>(frameBufferSpec);
+
+
+    FramebufferSpecification resolveSpec = frameBufferSpec;
+    resolveSpec.Samples = 1;  
+    resolveSpec.Attachments = {
+        { FramebufferAttachmentType::Texture2D, GL_RGB8, GL_COLOR_ATTACHMENT0 },
+    };
+    resolveFrameBuffer = std::make_unique<Framebuffer>(resolveSpec);
 
     uboMatrices = std::make_unique<UniformBuffer<Matrices>>(0, GL_DYNAMIC_DRAW);
 
@@ -279,6 +300,7 @@ void GLEngine::processEvent(SDL_Event& e) {
         viewportH = e.window.data2;
         glViewport(0, 0, viewportW, viewportH);
         sceneFrameBuffer->Resize(viewportW, viewportH);
+        resolveFrameBuffer->Resize(viewportW, viewportH);
     }
 }
 
@@ -380,15 +402,27 @@ void GLEngine::draw() {
 
     sceneFrameBuffer->Unbind();
 
+    glBindFramebuffer(GL_READ_FRAMEBUFFER,  sceneFrameBuffer->GetRendererID());
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER,  resolveFrameBuffer->GetRendererID());
+    glBlitFramebuffer(
+        0, 0, viewportW, viewportH,
+        0, 0, viewportW, viewportH,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST
+    );
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+
+    // Draw quad 
     glViewport(0, 0, viewportW, viewportH);
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-
     pipelines["framebuffer"].apply();
     glBindVertexArray(screenQuadMesh.vao);
     glDisable(GL_DEPTH_TEST);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, sceneFrameBuffer->GetTextureID(0));
+    glBindTexture(GL_TEXTURE_2D, resolveFrameBuffer->GetTextureID(0));
     glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
     glBindVertexArray(0);
 }

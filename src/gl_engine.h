@@ -68,6 +68,7 @@ private:
 
 	FramebufferSpecification frameBufferSpec;
 	std::unique_ptr<Framebuffer> sceneFrameBuffer;
+	std::unique_ptr<Framebuffer> resolveFrameBuffer;
 
 	std::unique_ptr<UniformBuffer<Matrices>> uboMatrices;
 

@@ -38,51 +38,60 @@ void Framebuffer::Invalidate()
     for (size_t i = 0; i < count; ++i) {
         const auto& att = m_Specification.Attachments[i];
         if (att.Type == FramebufferAttachmentType::Texture2D) {
-            glGenTextures(1, &m_TextureIDs[i]);
-            glBindTexture(GL_TEXTURE_2D, m_TextureIDs[i]);
-
-            // Determine base format and type from internal format
-            GLenum internalFormat = att.InternalFormat;
-            GLenum format = GL_RGBA;
-            GLenum type = GL_UNSIGNED_BYTE;
-            switch (internalFormat) {
-            case GL_RGB8:   format = GL_RGB;   break;
-            case GL_RGBA8:  format = GL_RGBA;  break;
-            case GL_RGB16F: format = GL_RGB;   type = GL_FLOAT; break;
-            case GL_RGBA16F:format = GL_RGBA;  type = GL_FLOAT; break;
-            case GL_DEPTH24_STENCIL8:
-                format = GL_DEPTH_STENCIL;
-                type = GL_UNSIGNED_INT_24_8;
-                break;
+            if (m_Specification.Samples > 1) {
+                // Multisample texture
+                glGenTextures(1, &m_TextureIDs[i]);
+                glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, m_TextureIDs[i]);
+                glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE,
+                    m_Specification.Samples,
+                    att.InternalFormat,
+                    m_Specification.Width,
+                    m_Specification.Height,
+                    GL_TRUE);
+                glFramebufferTexture2D(GL_FRAMEBUFFER,
+                    att.AttachmentPoint,
+                    GL_TEXTURE_2D_MULTISAMPLE,
+                    m_TextureIDs[i], 0);
             }
-
-            glTexImage2D(GL_TEXTURE_2D,
-                0,
-                internalFormat,
-                m_Specification.Width,
-                m_Specification.Height,
-                0,
-                format,
-                type,
-                nullptr);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-            glFramebufferTexture2D(GL_FRAMEBUFFER,
-                att.AttachmentPoint,
-                GL_TEXTURE_2D,
-                m_TextureIDs[i],
-                0);
+            else {
+                // Regular texture
+                glGenTextures(1, &m_TextureIDs[i]);
+                glBindTexture(GL_TEXTURE_2D, m_TextureIDs[i]);
+                GLenum internalFormat = att.InternalFormat;
+                GLenum format = (internalFormat == GL_RGB8 ? GL_RGB :
+                    internalFormat == GL_RGBA8 ? GL_RGBA : GL_RGBA);
+                GLenum type = (internalFormat == GL_RGB16F || internalFormat == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE);
+                glTexImage2D(GL_TEXTURE_2D, 0, internalFormat,
+                    m_Specification.Width, m_Specification.Height,
+                    0, format, type, nullptr);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                glFramebufferTexture2D(GL_FRAMEBUFFER,
+                    att.AttachmentPoint,
+                    GL_TEXTURE_2D,
+                    m_TextureIDs[i], 0);
+            }
         }
         else {
             glGenRenderbuffers(1, &m_RenderbufferIDs[i]);
             glBindRenderbuffer(GL_RENDERBUFFER, m_RenderbufferIDs[i]);
-            glRenderbufferStorage(GL_RENDERBUFFER,
-                att.InternalFormat,
-                m_Specification.Width,
-                m_Specification.Height);
+            if (m_Specification.Samples > 1) {
+                // Multisample renderbuffer
+                glRenderbufferStorageMultisample(GL_RENDERBUFFER,
+                    m_Specification.Samples,
+                    att.InternalFormat,
+                    m_Specification.Width,
+                    m_Specification.Height);
+            }
+            else {
+                // Regular renderbuffer
+                glRenderbufferStorage(GL_RENDERBUFFER,
+                    att.InternalFormat,
+                    m_Specification.Width,
+                    m_Specification.Height);
+            }
             glFramebufferRenderbuffer(GL_FRAMEBUFFER,
                 att.AttachmentPoint,
                 GL_RENDERBUFFER,
@@ -126,6 +135,11 @@ void Framebuffer::Resize(uint32_t width, uint32_t height)
     m_Specification.Width = width;
     m_Specification.Height = height;
     Invalidate();
+}
+
+uint32_t Framebuffer::GetRendererID() const
+{
+    return m_RendererID;
 }
 
 uint32_t Framebuffer::GetTextureID(uint32_t index) const
