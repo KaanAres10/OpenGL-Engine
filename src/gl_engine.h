@@ -58,6 +58,7 @@ private:
 
 	std::vector<glm::vec3> cubePositions;
 	std::vector<glm::vec3> pointLightPositions;
+	std::vector<glm::vec3> pointLightColors;
 	std::vector<glm::mat4> instanceModelMatrices;
 
 	InstanceGrid grid;

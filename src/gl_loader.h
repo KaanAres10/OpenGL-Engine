@@ -4,9 +4,9 @@
 
 namespace glloader {
 	GLMeshBuffers loadMesh(const std::string& path);
-	GLTexture     loadTexture(const std::string& path);
-	GLTexture loadTextureMirror(const std::string& path);
-	GLTexture loadCubemap(const std::vector<std::string>& faces);
+	GLTexture     loadTexture(const std::string& path, bool gammaCorrection = false);
+	GLTexture loadTextureMirror(const std::string& path, bool gammaCorrection = false);
+	GLTexture loadCubemap(const std::vector<std::string>& faces, bool gammaCorrection = false);
 	GLMesh loadQuadWithTexture_Normal();
 	GLMesh loadQuadWithTextureNDC();
 	GLMesh loadQuadWithColorNDC();

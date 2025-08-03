@@ -8,7 +8,12 @@ const float BLOCK_SIZE = 6.0;
 
 void main() {
 
-    FragColor = texture(screenTexture, texCoords);
+    vec3 color =  texture(screenTexture, texCoords).rgb;
+
+    float gamma = 2.2;
+    color = pow(color, vec3(1.0 / gamma));
+    FragColor = vec4(color, 1.0);
+
     //ivec2 texSize = textureSize(screenTexture, 0);
     //vec2 resolution = vec2(texSize);
 

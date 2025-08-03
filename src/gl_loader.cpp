@@ -9,7 +9,7 @@ GLMeshBuffers glloader::loadMesh(const std::string& path)
     return GLMeshBuffers();
 }
 
-GLTexture glloader::loadTexture(const std::string& path) {
+GLTexture glloader::loadTexture(const std::string& path, bool gammaCorrection) {
     GLTexture tex{};
 
     stbi_set_flip_vertically_on_load(true);
@@ -38,10 +38,12 @@ GLTexture glloader::loadTexture(const std::string& path) {
         internalFormat = dataFormat = GL_RED;
     }
     else if (nrChannels == 3) {
-        internalFormat = dataFormat = GL_RGB;
+        internalFormat = gammaCorrection ? GL_SRGB8 : GL_RGB8;
+        dataFormat = GL_RGB;
     }
     else if (nrChannels == 4) {
-        internalFormat = dataFormat = GL_RGBA;
+        internalFormat = gammaCorrection ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+        dataFormat = GL_RGBA;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
@@ -68,7 +70,7 @@ GLTexture glloader::loadTexture(const std::string& path) {
     return tex;
 }
 
-GLTexture glloader::loadTextureMirror(const std::string& path) {
+GLTexture glloader::loadTextureMirror(const std::string& path, bool gammaCorrection) {
     GLTexture tex{};
 
     stbi_set_flip_vertically_on_load(true);
@@ -97,10 +99,12 @@ GLTexture glloader::loadTextureMirror(const std::string& path) {
         internalFormat = dataFormat = GL_RED;
     }
     else if (nrChannels == 3) {
-        internalFormat = dataFormat = GL_RGB;
+        internalFormat = gammaCorrection ? GL_SRGB8 : GL_RGB8;
+        dataFormat = GL_RGB;
     }
     else if (nrChannels == 4) {
-        internalFormat = dataFormat = GL_RGBA;
+        internalFormat = gammaCorrection ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+        dataFormat = GL_RGBA;
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
@@ -127,7 +131,7 @@ GLTexture glloader::loadTextureMirror(const std::string& path) {
     return tex;
 }
 
-GLTexture glloader::loadCubemap(const std::vector<std::string>& faces) {
+GLTexture glloader::loadCubemap(const std::vector<std::string>& faces, bool gammaCorrection) {
     GLTexture tex{};
     glGenTextures(1, &tex.id);
     glBindTexture(GL_TEXTURE_CUBE_MAP, tex.id);
@@ -146,13 +150,19 @@ GLTexture glloader::loadCubemap(const std::vector<std::string>& faces) {
 
         GLenum internalFormat, dataFormat;
         if (nrChannels == 1) {
-            internalFormat = dataFormat = GL_RED;
+            internalFormat = dataFormat = GL_R8;
         }
         else if (nrChannels == 3) {
-            internalFormat = dataFormat = GL_RGB;
+            internalFormat = gammaCorrection
+                ? GL_SRGB8
+                : GL_RGB8;
+            dataFormat = GL_RGB;
         }
         else if (nrChannels == 4) {
-            internalFormat = dataFormat = GL_RGBA;
+            internalFormat = gammaCorrection
+                ? GL_SRGB8_ALPHA8
+                : GL_RGBA8;
+            dataFormat = GL_RGBA;
         }
         else {
             stbi_image_free(data);

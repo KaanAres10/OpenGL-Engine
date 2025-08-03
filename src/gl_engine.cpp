@@ -204,6 +204,15 @@ bool GLEngine::init(int w, int h) {
       GL_FILL
     };
 
+    pipelines["blinn_phong_V2"] = GLPipeline{
+    Shader("blinn_phong_V2.vert", "blinn_phong_V2.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
+
+
     lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
@@ -226,20 +235,20 @@ bool GLEngine::init(int w, int h) {
 
     floorMesh = glloader::loadPlaneWithTexture_Normal();
 
-    containerTex = glloader::loadTexture("assets/textures/container.png");
+    containerTex = glloader::loadTexture("assets/textures/container.png", true);
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
-    grassTex = glloader::loadTexture("assets/textures/grass.png");
-    windowTex = glloader::loadTexture("assets/textures/blending_transparent_window.png");
+    grassTex = glloader::loadTexture("assets/textures/grass.png", true);
+    windowTex = glloader::loadTexture("assets/textures/blending_transparent_window.png", true);
     cubeMapTex = glloader::loadCubemap({
         "assets/textures/sky_2/px.png",
         "assets/textures/sky_2/nx.png", 
         "assets/textures/sky_2/py.png", 
         "assets/textures/sky_2/ny.png", 
         "assets/textures/sky_2/pz.png", 
-        "assets/textures/sky_2/nz.png"  
+        "assets/textures/sky_2/nz.png"
         });
-    floorTex = glloader::loadTexture("assets/textures/floor.png");
-    whiteTex = glloader::loadTexture("assets/textures/white.jpg");
+    floorTex = glloader::loadTexture("assets/textures/floor.png", true);
+    whiteTex = glloader::loadTexture("assets/textures/white.jpg", true);
 
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
@@ -260,10 +269,17 @@ bool GLEngine::init(int w, int h) {
     };
 
     pointLightPositions = {
-        glm::vec3(0.7f,  0.2f,  2.0f),
+        glm::vec3(235,  180.0f,  20.0f),
         glm::vec3(2.3f, -3.3f, -4.0f),
         glm::vec3(-4.0f,  2.0f, -12.0f),
         glm::vec3(0.0f,  0.0f, -3.0f)
+    };
+
+    pointLightColors = {
+    {1.0f, 0.6f, 0.0f}, 
+    {0.0f, 0.0f, 1.0f}, 
+    {0.0f, 1.0f, 0.0f}, 
+    {1.0f, 1.0f, 1.0f}, 
     };
 
     vegetation.push_back(glm::vec3(-1.5f, 0.0f, -0.48f));
@@ -330,7 +346,6 @@ void GLEngine::run() {
         float dt = (now - last) * 0.001f;
         last = now;
 
-        // 1) Poll and dispatch SDL events to ImGui and camera
         ImGuiIO& io = ImGui::GetIO();
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -360,12 +375,10 @@ void GLEngine::run() {
             }
         }
 
-        // 2) Start new ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
-        // 3) Compute camera matrices once
         glm::mat4 view = camera.getViewMatrix();
         glm::mat4 proj = glm::perspective(
             glm::radians(75.0f),
@@ -375,7 +388,6 @@ void GLEngine::run() {
 
         ImGui::Begin("Lights");
 
-        // build “None / Light 0 …” combo
         {
             std::vector<std::string> labels = { "None" };
             for (size_t i = 0; i < pointLightPositions.size(); ++i)
@@ -384,7 +396,7 @@ void GLEngine::run() {
             std::vector<const char*> cstrs;
             for (auto& s : labels) cstrs.push_back(s.c_str());
 
-            int comboIdx = selectedLightIdx + 1; // -1 ? item 0
+            int comboIdx = selectedLightIdx + 1;
             ImGui::Combo("Selected light", &comboIdx,
                 cstrs.data(), int(cstrs.size()));
             selectedLightIdx = comboIdx - 1;
@@ -392,14 +404,18 @@ void GLEngine::run() {
 
         if (selectedLightIdx >= 0)
         {
-            glm::vec3& pos = pointLightPositions[size_t(selectedLightIdx)];
+            ImGui::PushID(selectedLightIdx);
 
-            // live gizmo on the whole viewport
+            glm::vec3& pos = pointLightPositions[selectedLightIdx];
+            glm::vec3& col = pointLightColors[selectedLightIdx];
+
             ShowImGuizmoTranslation(viewportW, viewportH, camera, pos);
 
-            // numeric fallback / fine-tune
             ImGui::DragFloat3("Position", glm::value_ptr(pos),
                 0.05f, -50.f, 50.f);
+            ImGui::ColorEdit3("Color", glm::value_ptr(col));
+
+            ImGui::PopID();
         }
 
         if (ImGui::Button("Add point light"))
@@ -425,11 +441,9 @@ void GLEngine::run() {
 
       
 
-        // 8) Render ImGui (windows)
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-        // 9) Present the final composited frame
         SDL_GL_SwapWindow(window);
     }
 }
@@ -464,39 +478,36 @@ void GLEngine::draw() {
     uboMatrices->updateMember(0, proj);
     uboMatrices->updateMember(sizeof(glm::mat4), view);
 
-    model = glm::mat4(1.0f);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, containerSpecularTex.id);
 
-    pipelines["blinn_phong"].apply();
-    pipelines["blinn_phong"].shader.setInt("material.diffuse", 0);
-    pipelines["blinn_phong"].shader.setInt("material.specular", 1);
+    pipelines["blinn_phong_V2"].apply();
 
-    pipelines["blinn_phong"].shader.setVec3("material.ambient", glm::vec3(1.0f, 0.5, 0.31f));
-    pipelines["blinn_phong"].shader.setFloat("material.shininess", 32.0f);
-    pipelines["blinn_phong"].shader.setMat4("model", model);
-    pipelines["blinn_phong"].shader.setVec3("viewPos", camera.position);
+    // matrices
+    pipelines["blinn_phong_V2"].shader.setMat4("view", view);
+    pipelines["blinn_phong_V2"].shader.setMat4("projection", proj);
+    // camera
+    pipelines["blinn_phong_V2"].shader.setVec3("viewPos", camera.position);
 
+    // model (you already have this)
+    pipelines["blinn_phong_V2"].setModel(model);
 
-    drawPointLights();
+    // texture
+    pipelines["blinn_phong_V2"].shader.setInt("diffuseMap", 0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, floorTex.id);
 
-    drawSpotLight();
+    // directional light
+    pipelines["blinn_phong_V2"].shader.setVec3("dirLightDirection", glm::vec3(-0.2f, -1.0f, -0.3f));
+    pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(0.1f));
 
-    glBindVertexArray(objectMesh.vao);
-    for (GLuint i = 0; i < cubePositions.size(); i++) {
-        model = glm::translate(glm::mat4(1.0f), cubePositions[i]);
-        float angle = 20.0f * i;
-        model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-        pipelines["blinn_phong"].shader.setMat4("model", model);
-        glDrawArrays(GL_TRIANGLES, 0, objectMesh.vertexCount);
+    // point lights
+    pipelines["blinn_phong_V2"].shader.setInt("uPointLightCount", (int)pointLightPositions.size());
+    for (size_t i = 0; i < pointLightPositions.size(); ++i) {
+        auto idx = std::to_string(i);
+        pipelines["blinn_phong_V2"].shader.setVec3("pointLightPositions[" + idx + "]", pointLightPositions[i]);
+        pipelines["blinn_phong_V2"].shader.setVec3("pointLightColors[" + idx + "]", pointLightColors[i]);
     }
-    glBindVertexArray(0);
 
     glBindVertexArray(planeMesh.vao);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, whiteTex.id);
-    model = glm::mat4(1.0f);
-    pipelines["blinn_phong"].setModel(model);
     glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
     glBindVertexArray(0);
 
@@ -592,11 +603,11 @@ void GLEngine::drawPointLights()
         );
         pipelines["blinn_phong"].shader.setFloat(
             ("pointLights[" + idx + "].linear").c_str(),
-            0.09f
+            0.198f
         );
         pipelines["blinn_phong"].shader.setFloat(
             ("pointLights[" + idx + "].quadratic").c_str(),
-            0.032f
+            0.155f
         );
     }
 }
@@ -620,18 +631,18 @@ void GLEngine::drawSpotLight() {
     pipelines["blinn_phong"].shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
     pipelines["blinn_phong"].shader.setVec3("spotLight.specular", glm::vec3(1.0f));
     pipelines["blinn_phong"].shader.setFloat("spotLight.constant", 1.0f);
-    pipelines["blinn_phong"].shader.setFloat("spotLight.linear", 0.09f);
-    pipelines["blinn_phong"].shader.setFloat("spotLight.quadratic", 0.032f);
+    pipelines["blinn_phong"].shader.setFloat("spotLight.linear", 0.198f);
+    pipelines["blinn_phong"].shader.setFloat("spotLight.quadratic", 0.155f);
 }
 
 void GLEngine::drawScene()
 {
     glPointSize(8.0f);
     model = glm::mat4(1.0f);
-    pipelines["model"].apply();
-    pipelines["model"].shader.setMat4("model", model);
+    pipelines["blinn_phong_V2"].apply();
+    pipelines["blinn_phong_V2"].shader.setMat4("blinn_phong_V2", model);
 
-    sceneModel.draw(pipelines["model"].shader);
+    sceneModel.draw(pipelines["blinn_phong_V2"].shader);
 }
 
 

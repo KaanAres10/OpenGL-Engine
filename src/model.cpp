@@ -15,17 +15,28 @@ static GLuint TextureFromFile(const char* filename, const std::string& directory
 		return 0;
 	}
 
-	GLenum format;
-	if (nrComponents == 1)       format = GL_RED;
-	else if (nrComponents == 3)  format = GL_RGB;
-	else if (nrComponents == 4)  format = GL_RGBA;
+	GLenum internalFormat, dataFormat;
+	if (nrComponents == 1) {
+		internalFormat = GL_R8;        dataFormat = GL_RED;
+	}
+	else if (nrComponents == 3) {
+		internalFormat = gammaCorrection ? GL_SRGB8 : GL_RGB8;
+		dataFormat = GL_RGB;
+	}
+	else if (nrComponents == 4) {
+		internalFormat = gammaCorrection ? GL_SRGB8_ALPHA8 : GL_RGBA8;
+		dataFormat = GL_RGBA;
+	}
 
 	GLuint textureID;
 	glGenTextures(1, &textureID);
 	glBindTexture(GL_TEXTURE_2D, textureID);
 
-	glTexImage2D(GL_TEXTURE_2D, 0, gammaCorrection ? GL_SRGB : format,
-		width, height, 0, format, GL_UNSIGNED_BYTE, data);
+	glTexImage2D(GL_TEXTURE_2D, 0,
+	internalFormat,
+		width, height, 0,
+		dataFormat, GL_UNSIGNED_BYTE,
+		data);
 	glGenerateMipmap(GL_TEXTURE_2D);
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -139,6 +150,8 @@ vector<Texture> Model::loadMaterialTextures(aiMaterial* mat,
 	const string& typeName,
 	const aiScene* scene)
 {
+	bool isDiffuse = (type == aiTextureType_DIFFUSE);
+
 	vector<Texture> textures;
 	for (unsigned i = 0; i < mat->GetTextureCount(type); ++i) {
 		aiString str;
@@ -180,15 +193,34 @@ vector<Texture> Model::loadMaterialTextures(aiMaterial* mat,
 				data = reinterpret_cast<unsigned char*>(atex->pcData);
 			}
 
-			GLenum fmt = (comp == 1 ? GL_RED
-				: comp == 3 ? GL_RGB
-				: GL_RGBA);
+			GLenum internalFormat, dataFormat;
+			if (comp == 1) {
+				internalFormat = GL_R8;           
+				dataFormat = GL_RED;
+			}
+			else if (comp == 3) {
+				internalFormat = isDiffuse
+					? GL_SRGB8   // decode on fetch
+					: GL_RGB8;   // stay linear
+				dataFormat = GL_RGB;
+			}
+			else if (comp == 4) {
+				internalFormat = isDiffuse
+					? GL_SRGB8_ALPHA8
+					: GL_RGBA8;
+				dataFormat = GL_RGBA;
+			}
+
 			glGenTextures(1, &tex.id);
 			glBindTexture(GL_TEXTURE_2D, tex.id);
-			glTexImage2D(GL_TEXTURE_2D, 0, fmt, w, h, 0, fmt,
-				GL_UNSIGNED_BYTE, data);
+			glTexImage2D(GL_TEXTURE_2D, 0,
+				internalFormat,
+				w, h, 0,
+				dataFormat, GL_UNSIGNED_BYTE,
+				data);
 			glGenerateMipmap(GL_TEXTURE_2D);
 
+			// wrap/filter as before
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,
@@ -196,13 +228,13 @@ vector<Texture> Model::loadMaterialTextures(aiMaterial* mat,
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
 			if (atex->mHeight == 0)
-				stbi_image_free(data); 
+				stbi_image_free(data);   // only free when stb actually allocated
 
 			tex.path = name;
 		}
 		else {
 			// External file
-			tex.id = TextureFromFile(name, directory);
+			tex.id = TextureFromFile(name, directory, type == aiTextureType_DIFFUSE);
 			tex.path = name;
 		}
 
