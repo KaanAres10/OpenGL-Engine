@@ -48,12 +48,13 @@ private:
 	GLMesh        environmentCubeMesh;
 	GLMesh        pointsMesh;
 	GLMesh        quadInstancingMesh;
+	GLMesh        floorMesh;
 
 
 	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
 
 	GLTexture     wallTex, faceTex, containerTex,
-		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex;
+		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex;
 
 	std::vector<glm::vec3> cubePositions;
 	std::vector<glm::vec3> pointLightPositions;
@@ -79,6 +80,12 @@ private:
 	void processEvent(SDL_Event&);
 	void update(float dt);
 	void draw();
+
+	void drawPointLights();
+
+	void drawDirectionalLight();
+
+	void drawSpotLight();
 
 	void drawScene();
 	void drawPlants();

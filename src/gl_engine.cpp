@@ -11,7 +11,34 @@
 #include "backends/imgui_impl_opengl3.h"
 #include <map>
 #include <random>
-#include <cmath>     
+#include <cmath>
+#include "ImGuizmo.h"
+
+static int   selectedLightIdx = -1;                 
+static float gizmoSnap[3] = { 0.f, 0.f, 0.f };    
+static void ShowImGuizmoTranslation(int viewportW, int viewportH,
+    const Camera& cam,
+    glm::vec3& position)
+{
+    ImGuizmo::BeginFrame();                               
+    ImGuizmo::SetOrthographic(false);
+    ImGuizmo::SetDrawlist(ImGui::GetForegroundDrawList()); 
+
+    const glm::mat4 view = cam.getViewMatrix();
+    const glm::mat4 proj = glm::perspective(glm::radians(75.0f),
+        float(viewportW) / float(viewportH),
+        0.1f, 10000.0f);
+
+    glm::mat4 model = glm::translate(glm::mat4(1.0f), position);
+    ImGuizmo::SetRect(0, 0, float(viewportW), float(viewportH));
+
+    ImGuizmo::Manipulate(glm::value_ptr(view), glm::value_ptr(proj),
+        ImGuizmo::TRANSLATE, ImGuizmo::WORLD,
+        glm::value_ptr(model), nullptr, gizmoSnap);
+
+    if (ImGuizmo::IsUsing())
+        position = glm::vec3(model[3]);               
+}
 
 bool GLEngine::init(int w, int h) {
     if (SDL_Init(SDL_INIT_VIDEO)) return false;
@@ -48,6 +75,15 @@ bool GLEngine::init(int w, int h) {
         auto projectRoot = exeDir.parent_path().parent_path();
         std::filesystem::current_path(projectRoot);
     }
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO(); (void)io;
+    //io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; 
+    ImGui::StyleColorsDark();
+    ImGui_ImplSDL2_InitForOpenGL(window, glContext);
+    ImGui_ImplOpenGL3_Init("#version 450");
+
 
     glViewport(0, 0, w, h);
 
@@ -153,11 +189,19 @@ bool GLEngine::init(int w, int h) {
     };
 
     pipelines["fxaa"] = GLPipeline{
-        Shader("fxaa.vert", "fxaa.frag"),
-        BlendMode::None,
-        false,         // no depth
-        GL_NONE,
-        GL_FILL
+    Shader("fxaa.vert", "fxaa.frag"),
+    BlendMode::None,
+    false,         
+    GL_NONE,
+    GL_FILL
+    };
+
+    pipelines["blinn_phong"] = GLPipeline{
+      Shader("blinn_phong.vert", "blinn_phong.frag"),
+      BlendMode::None,
+      true,
+      GL_NONE,
+      GL_FILL
     };
 
     lightMesh = glloader::loadCubeWithoutTexture();
@@ -180,9 +224,10 @@ bool GLEngine::init(int w, int h) {
 
     quadInstancingMesh = glloader::loadQuadWithColorNDC();
 
+    floorMesh = glloader::loadPlaneWithTexture_Normal();
+
     containerTex = glloader::loadTexture("assets/textures/container.png");
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
-    floorTex = glloader::loadTextureMirror("assets/textures/floor.jpeg");
     grassTex = glloader::loadTexture("assets/textures/grass.png");
     windowTex = glloader::loadTexture("assets/textures/blending_transparent_window.png");
     cubeMapTex = glloader::loadCubemap({
@@ -193,6 +238,9 @@ bool GLEngine::init(int w, int h) {
         "assets/textures/sky_2/pz.png", 
         "assets/textures/sky_2/nz.png"  
         });
+    floorTex = glloader::loadTexture("assets/textures/floor.png");
+    whiteTex = glloader::loadTexture("assets/textures/white.jpg");
+
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
     plantModel.loadModel("assets/plant/scene.gltf");
@@ -276,19 +324,112 @@ bool GLEngine::init(int w, int h) {
 void GLEngine::run() {
     bool running = true;
     Uint32 last = SDL_GetTicks();
+
     while (running) {
         Uint32 now = SDL_GetTicks();
-        float totalTime = now * 0.001f;
-        float dt = (now - last) * 0.001f; last = now;
+        float dt = (now - last) * 0.001f;
+        last = now;
 
+        // 1) Poll and dispatch SDL events to ImGui and camera
+        ImGuiIO& io = ImGui::GetIO();
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            if (e.type == SDL_QUIT) running = false;
-            processEvent(e);
+            ImGui_ImplSDL2_ProcessEvent(&e);
+            if (e.type == SDL_QUIT) {
+                running = false;
+            }
+            else if ((e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONDOWN ||
+                e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEWHEEL)
+                && io.WantCaptureMouse) {
+                // ImGui handles mouse
+            }
+            else if ((e.type == SDL_KEYDOWN || e.type == SDL_KEYUP ||
+                e.type == SDL_TEXTINPUT) && io.WantCaptureKeyboard) {
+                // ImGui handles keyboard
+            }
+            else {
+                camera.processSDLEvent(e);
+                if (e.type == SDL_WINDOWEVENT &&
+                    e.window.event == SDL_WINDOWEVENT_RESIZED) {
+                    viewportW = e.window.data1;
+                    viewportH = e.window.data2;
+                    glViewport(0, 0, viewportW, viewportH);
+                    sceneFrameBuffer->Resize(viewportW, viewportH);
+                    resolveFrameBuffer->Resize(viewportW, viewportH);
+                }
+            }
         }
+
+        // 2) Start new ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+
+        // 3) Compute camera matrices once
+        glm::mat4 view = camera.getViewMatrix();
+        glm::mat4 proj = glm::perspective(
+            glm::radians(75.0f),
+            float(viewportW) / float(viewportH),
+            0.1f, 10000.0f
+        );
+
+        ImGui::Begin("Lights");
+
+        // build “None / Light 0 …” combo
+        {
+            std::vector<std::string> labels = { "None" };
+            for (size_t i = 0; i < pointLightPositions.size(); ++i)
+                labels.push_back("Light " + std::to_string(i));
+
+            std::vector<const char*> cstrs;
+            for (auto& s : labels) cstrs.push_back(s.c_str());
+
+            int comboIdx = selectedLightIdx + 1; // -1 ? item 0
+            ImGui::Combo("Selected light", &comboIdx,
+                cstrs.data(), int(cstrs.size()));
+            selectedLightIdx = comboIdx - 1;
+        }
+
+        if (selectedLightIdx >= 0)
+        {
+            glm::vec3& pos = pointLightPositions[size_t(selectedLightIdx)];
+
+            // live gizmo on the whole viewport
+            ShowImGuizmoTranslation(viewportW, viewportH, camera, pos);
+
+            // numeric fallback / fine-tune
+            ImGui::DragFloat3("Position", glm::value_ptr(pos),
+                0.05f, -50.f, 50.f);
+        }
+
+        if (ImGui::Button("Add point light"))
+        {
+            pointLightPositions.emplace_back(glm::vec3(0.f));
+            selectedLightIdx = int(pointLightPositions.size()) - 1;
+        }
+
+        if (selectedLightIdx >= 0 && ImGui::Button("Remove selected"))
+        {
+            pointLightPositions.erase(pointLightPositions.begin() + selectedLightIdx);
+            selectedLightIdx = -1;
+        }
+
+        ImGui::End();
+
+        uboMatrices->updateMember(0, proj);
+        uboMatrices->updateMember(sizeof(glm::mat4), view);
+
         camera.update(dt);
         update(dt);
         draw();
+
+      
+
+        // 8) Render ImGui (windows)
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // 9) Present the final composited frame
         SDL_GL_SwapWindow(window);
     }
 }
@@ -323,51 +464,44 @@ void GLEngine::draw() {
     uboMatrices->updateMember(0, proj);
     uboMatrices->updateMember(sizeof(glm::mat4), view);
 
-
-    pipelines["blending"].apply();
-    pipelines["blending"].setModel(model);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
-    glBindVertexArray(cubeMesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
-    glBindVertexArray(0);
-
-    model = glm::translate(model, glm::vec3(0.5, 0.0, 2.0));
-    pipelines["blending"].shader.use();
-    pipelines["blending"].setModel(model);;
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
-    glBindVertexArray(cubeMesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
-    glBindVertexArray(0);
-
     model = glm::mat4(1.0f);
-    pipelines["blending"].shader.use();
-    pipelines["blending"].setModel(model);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, containerTex.id);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, containerSpecularTex.id);
+
+    pipelines["blinn_phong"].apply();
+    pipelines["blinn_phong"].shader.setInt("material.diffuse", 0);
+    pipelines["blinn_phong"].shader.setInt("material.specular", 1);
+
+    pipelines["blinn_phong"].shader.setVec3("material.ambient", glm::vec3(1.0f, 0.5, 0.31f));
+    pipelines["blinn_phong"].shader.setFloat("material.shininess", 32.0f);
+    pipelines["blinn_phong"].shader.setMat4("model", model);
+    pipelines["blinn_phong"].shader.setVec3("viewPos", camera.position);
+
+
+    drawPointLights();
+
+    drawSpotLight();
+
+    glBindVertexArray(objectMesh.vao);
+    for (GLuint i = 0; i < cubePositions.size(); i++) {
+        model = glm::translate(glm::mat4(1.0f), cubePositions[i]);
+        float angle = 20.0f * i;
+        model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+        pipelines["blinn_phong"].shader.setMat4("model", model);
+        glDrawArrays(GL_TRIANGLES, 0, objectMesh.vertexCount);
+    }
+    glBindVertexArray(0);
+
     glBindVertexArray(planeMesh.vao);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, whiteTex.id);
+    model = glm::mat4(1.0f);
+    pipelines["blinn_phong"].setModel(model);
     glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
     glBindVertexArray(0);
 
-
-    std::map<float, glm::vec3> sorted;
-    for (GLuint i = 0; i < vegetation.size(); i++)
-    {
-        float distance = glm::length(camera.position - vegetation[i]);
-        sorted[distance] = vegetation[i];
-    }
-
-    drawPlants();
-
     drawScene();
 
-    pipelines["blending"].apply();
-    glBindVertexArray(quadMesh.vao);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, windowTex.id);
-    for (std::map<float, glm::vec3>::reverse_iterator it = sorted.rbegin(); it != sorted.rend(); it++) {
-        model = glm::mat4(1.0f);
-        model = glm::translate(model, it->second);
-        pipelines["blending"].setModel(model);
-        glDrawArrays(GL_TRIANGLES, 0, quadMesh.vertexCount);
-    }
 
     glDisable(GL_CULL_FACE);
     model = glm::mat4(1.0f);
@@ -427,6 +561,69 @@ void GLEngine::draw() {
     glBindVertexArray(0);
 }
 
+void GLEngine::drawPointLights()
+{
+
+    pipelines["blinn_phong"].shader.setInt("uPointLightCount",
+        static_cast<int>(pointLightPositions.size()));
+
+    for (GLuint i = 0; i < pointLightPositions.size(); i++) {
+        std::string idx = std::to_string(i);
+
+        pipelines["blinn_phong"].shader.setVec3(
+            ("pointLights[" + idx + "].position").c_str(),
+            pointLightPositions[i]
+        );
+        pipelines["blinn_phong"].shader.setVec3(
+            ("pointLights[" + idx + "].ambient").c_str(),
+            glm::vec3(0.05f)
+        );
+        pipelines["blinn_phong"].shader.setVec3(
+            ("pointLights[" + idx + "].diffuse").c_str(),
+            glm::vec3(0.8f)
+        );
+        pipelines["blinn_phong"].shader.setVec3(
+            ("pointLights[" + idx + "].specular").c_str(),
+            glm::vec3(1.0f)
+        );
+        pipelines["blinn_phong"].shader.setFloat(
+            ("pointLights[" + idx + "].constant").c_str(),
+            1.0f
+        );
+        pipelines["blinn_phong"].shader.setFloat(
+            ("pointLights[" + idx + "].linear").c_str(),
+            0.09f
+        );
+        pipelines["blinn_phong"].shader.setFloat(
+            ("pointLights[" + idx + "].quadratic").c_str(),
+            0.032f
+        );
+    }
+}
+
+void GLEngine::drawDirectionalLight()
+{
+    pipelines["blinn_phong"].shader.setVec3("directionalLight.direction", glm::vec3(-0.2f, -1.0f, -0.3f));
+    pipelines["blinn_phong"].shader.setVec3("directionalLight.ambient", glm::vec3(0.05f, 0.05f, 0.05f));
+    pipelines["blinn_phong"].shader.setVec3("directionalLight.diffuse", glm::vec3(0.4f, 0.4f, 0.4f));
+    pipelines["blinn_phong"].shader.setVec3("directionalLight.specular", glm::vec3(0.5f, 0.5f, 0.5f));
+
+
+}
+
+void GLEngine::drawSpotLight() {
+    pipelines["blinn_phong"].shader.setVec3("spotLight.position", camera.position);
+    pipelines["blinn_phong"].shader.setVec3("spotLight.direction", camera.front);
+    pipelines["blinn_phong"].shader.setFloat("spotLight.cutOff", glm::cos(glm::radians(12.5f)));
+    pipelines["blinn_phong"].shader.setFloat("spotLight.outerCutOff", glm::cos(glm::radians(17.5f)));
+    pipelines["blinn_phong"].shader.setVec3("spotLight.ambient", glm::vec3(0.0f));
+    pipelines["blinn_phong"].shader.setVec3("spotLight.diffuse", glm::vec3(1.0f));
+    pipelines["blinn_phong"].shader.setVec3("spotLight.specular", glm::vec3(1.0f));
+    pipelines["blinn_phong"].shader.setFloat("spotLight.constant", 1.0f);
+    pipelines["blinn_phong"].shader.setFloat("spotLight.linear", 0.09f);
+    pipelines["blinn_phong"].shader.setFloat("spotLight.quadratic", 0.032f);
+}
+
 void GLEngine::drawScene()
 {
     glPointSize(8.0f);
@@ -461,6 +658,7 @@ void GLEngine::drawSceneNormal()
 
 void GLEngine::drawLight()
 {
+
     model = glm::mat4(1.0f);
     model = glm::translate(glm::mat4(1.0f), lightPos);
     model = glm::scale(model, glm::vec3(0.2f));

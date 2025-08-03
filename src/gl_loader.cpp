@@ -406,13 +406,13 @@ GLMesh glloader::loadPlaneWithTexture_Normal() {
     GLMesh m{};
     float planeVertices[] = {
         // positions         // normals       // texcoords
-         5.0f, -0.5f,  5.0f,   0.0f, 1.0f, 0.0f,   2.0f, 0.0f,
+         5.0f, -0.5f,  5.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
         -5.0f, -0.5f,  5.0f,   0.0f, 1.0f, 0.0f,   0.0f, 0.0f,
-        -5.0f, -0.5f, -5.0f,   0.0f, 1.0f, 0.0f,   0.0f, 2.0f,
+        -5.0f, -0.5f, -5.0f,   0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
 
-         5.0f, -0.5f,  5.0f,   0.0f, 1.0f, 0.0f,   2.0f, 0.0f,
-        -5.0f, -0.5f, -5.0f,   0.0f, 1.0f, 0.0f,   0.0f, 2.0f,
-         5.0f, -0.5f, -5.0f,   0.0f, 1.0f, 0.0f,   2.0f, 2.0f
+         5.0f, -0.5f,  5.0f,   0.0f, 1.0f, 0.0f,   1.0f, 0.0f,
+        -5.0f, -0.5f, -5.0f,   0.0f, 1.0f, 0.0f,   0.0f, 1.0f,
+         5.0f, -0.5f, -5.0f,   0.0f, 1.0f, 0.0f,   1.0f, 1.0f
     };
     glGenVertexArrays(1, &m.vao);
     glBindVertexArray(m.vao);
