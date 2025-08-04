@@ -212,6 +212,22 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["shadow_map"] = GLPipeline{
+    Shader("shadow_map.vert", "shadow_map.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
+
+    pipelines["depth_debug"] = GLPipeline{
+    Shader("depth_debug.vert", "depth_debug.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
+
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
@@ -269,17 +285,17 @@ bool GLEngine::init(int w, int h) {
     };
 
     pointLightPositions = {
-        glm::vec3(235,  180.0f,  20.0f),
+        glm::vec3(235,  180.0f,  20.0f)/*,
         glm::vec3(2.3f, -3.3f, -4.0f),
         glm::vec3(-4.0f,  2.0f, -12.0f),
-        glm::vec3(0.0f,  0.0f, -3.0f)
+        glm::vec3(0.0f,  0.0f, -3.0f)*/
     };
 
     pointLightColors = {
-    {1.0f, 0.6f, 0.0f}, 
+    {0.0f, 0.4f, 1.0f}/*, 
     {0.0f, 0.0f, 1.0f}, 
     {0.0f, 1.0f, 0.0f}, 
-    {1.0f, 1.0f, 1.0f}, 
+    {1.0f, 1.0f, 1.0f}, */
     };
 
     vegetation.push_back(glm::vec3(-1.5f, 0.0f, -0.48f));
@@ -309,7 +325,7 @@ bool GLEngine::init(int w, int h) {
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
     camera.front = { 0.0f, 0.0f, -1.0f };
-    camera.movementSpeed = 100.0f;
+    camera.movementSpeed = 500.0f;
 
     viewportW = w; viewportH = h;
 
@@ -332,7 +348,25 @@ bool GLEngine::init(int w, int h) {
     };
     resolveFrameBuffer = std::make_unique<Framebuffer>(resolveSpec);
 
+    
+    FramebufferSpecification shadowSpec;
+    shadowSpec.Width = SHADOW_WIDTH;
+    shadowSpec.Height = SHADOW_HEIGHT;
+    shadowSpec.Samples = 1;  
+    shadowSpec.Attachments = {
+        { FramebufferAttachmentType::Texture2D, GL_DEPTH_COMPONENT24, GL_DEPTH_ATTACHMENT }
+    };
+    shadowFrameBuffer = std::make_unique<Framebuffer>(shadowSpec);
+
+
     uboMatrices = std::make_unique<UniformBuffer<Matrices>>(0, GL_DYNAMIC_DRAW);
+
+
+    lightCamera.position = glm::vec3(-2.0f, 4.0f, -1.0f);
+    lightCamera.yaw = glm::radians(45.0f);  
+    lightCamera.pitch = glm::radians(-30.0f);
+    lightCamera.movementSpeed = 10.0f;
+    lightCamera.mouseSensitivity = 0.005f;
 
     return true;
 }
@@ -364,6 +398,8 @@ void GLEngine::run() {
             }
             else {
                 camera.processSDLEvent(e);
+                lightCamera.processSDLEvent(e);
+
                 if (e.type == SDL_WINDOWEVENT &&
                     e.window.event == SDL_WINDOWEVENT_RESIZED) {
                     viewportW = e.window.data1;
@@ -436,6 +472,10 @@ void GLEngine::run() {
         uboMatrices->updateMember(sizeof(glm::mat4), view);
 
         camera.update(dt);
+        lightCamera.update(dt);
+
+        //lightPos = lightCamera.position;
+
         update(dt);
         draw();
 
@@ -464,9 +504,48 @@ void GLEngine::update(float dt) {
 }
 
 void GLEngine::draw() {
-    sceneFrameBuffer->Bind();
-    glViewport(0, 0, viewportW, viewportH);
 
+    static float l = -1000.0f, r = 1000.0f, b = -1000.0f, t = 1000.0f, n = 0.01f, f = 4000.0f;
+    ImGui::Begin("Shadow Frustum");
+    ImGui::DragFloat("Left", &l, 1.0f, -5000.0f, 5000.0f);
+    ImGui::DragFloat("Right", &r, 1.0f, -5000.0f, 5000.0f);
+    ImGui::DragFloat("Bottom", &b, 1.0f, -5000.0f, 5000.0f);
+    ImGui::DragFloat("Top", &t, 1.0f, -5000.0f, 5000.0f);
+    ImGui::DragFloat("Near", &n, 0.1f, 0.01f, 1000.0f);
+    ImGui::DragFloat("Far", &f, 0.1f, 0.01f, 10000.0f);
+    ImGui::End();
+
+    ImGui::Begin("Directional Light View");
+    ImGui::DragFloat3("Directional Light Position", glm::value_ptr(lightPos), 0.1f, -1000.0f, 1000.0f);
+    ImGui::DragFloat3("Light Target", glm::value_ptr(lightTarget), 0.1f, -1000.0f, 1000.0f);
+    ImGui::End();
+
+    ImGui::Begin("Camera");
+    ImGui::DragFloat3("Camera Position", glm::value_ptr(camera.position), 0.1f, -1000.0f, 1000.0f);
+    ImGui::DragFloat3("Camera Direction", glm::value_ptr(camera.front), 0.1f, -1000.0f, 1000.0f);
+
+    ImGui::End();
+
+    glm::mat4 lightProj = glm::ortho(l, r, b, t, n, f);
+    glm::mat4 lightView = glm::lookAt(
+        lightPos,
+        lightTarget,
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+    lightSpaceMatrix = lightProj * lightView;
+
+
+    // Draw the Depth Map
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+    shadowFrameBuffer->Bind();
+    glClear(GL_DEPTH_BUFFER_BIT);
+    drawSceneDepthMap();
+    shadowFrameBuffer->Unbind();
+
+
+    // Draw the Actual Scene
+    glViewport(0, 0, viewportW, viewportH);
+    sceneFrameBuffer->Bind();
     glEnable(GL_DEPTH_TEST);
     glClearColor(.2f, .2f, .2f, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
@@ -480,24 +559,13 @@ void GLEngine::draw() {
 
 
     pipelines["blinn_phong_V2"].apply();
-
-    // matrices
-    pipelines["blinn_phong_V2"].shader.setMat4("view", view);
-    pipelines["blinn_phong_V2"].shader.setMat4("projection", proj);
-    // camera
     pipelines["blinn_phong_V2"].shader.setVec3("viewPos", camera.position);
-
-    // model (you already have this)
     pipelines["blinn_phong_V2"].setModel(model);
-
-    // texture
-    pipelines["blinn_phong_V2"].shader.setInt("diffuseMap", 0);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, floorTex.id);
+    pipelines["blinn_phong_V2"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
     // directional light
-    pipelines["blinn_phong_V2"].shader.setVec3("dirLightDirection", glm::vec3(-0.2f, -1.0f, -0.3f));
-    pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(0.1f));
+    pipelines["blinn_phong_V2"].shader.setVec3("dirLightDirection", glm::vec3(-0.840f, -0.541f, -0.035f));
+    pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(1.0f));
 
     // point lights
     pipelines["blinn_phong_V2"].shader.setInt("uPointLightCount", (int)pointLightPositions.size());
@@ -507,29 +575,58 @@ void GLEngine::draw() {
         pipelines["blinn_phong_V2"].shader.setVec3("pointLightColors[" + idx + "]", pointLightColors[i]);
     }
 
+    pipelines["blinn_phong_V2"].shader.setInt("diffuseMap", 0);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
+    pipelines["blinn_phong_V2"].shader.setInt("shadowMap", 1);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, shadowFrameBuffer->GetTextureID(0));
+    
     glBindVertexArray(planeMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
     glBindVertexArray(0);
 
     drawScene();
 
+    drawCubeMap();
 
-    glDisable(GL_CULL_FACE);
-    model = glm::mat4(1.0f);
-    model = glm::translate(model, glm::vec3(0.0f, 50.0f, 0.0f));
-    model = glm::scale(model, glm::vec3(20.0f, 20.0f, 20.0f));
-    pipelines["environment_map"].shader.use();
-    pipelines["environment_map"].setModel(model);
-    pipelines["environment_map"].setView(view);
-    pipelines["environment_map"].setProj(proj);
-    pipelines["environment_map"].shader.setFloat("skybox", 0);
-    pipelines["environment_map"].shader.setVec3("cameraPos", camera.position);
-    glBindVertexArray(environmentCubeMesh.vao);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMapTex.id);
-    glDrawArrays(GL_TRIANGLES, 0, environmentCubeMesh.vertexCount);
+    sceneFrameBuffer->Unbind();
+
+
+    // MSAA to Single Sample Framebuffer
+    glBindFramebuffer(GL_READ_FRAMEBUFFER,  sceneFrameBuffer->GetRendererID());
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER,  resolveFrameBuffer->GetRendererID());
+    glBlitFramebuffer(
+        0, 0, viewportW, viewportH,
+        0, 0, viewportW, viewportH,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST
+    );
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+
+    // Draw Screen Quad 
+    glViewport(0, 0, viewportW, viewportH);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    pipelines["framebuffer"].apply();
+    pipelines["framebuffer"].shader.setInt("screenTexture", 0);
+
+    glBindVertexArray(screenQuadMesh.vao);
+    glDisable(GL_DEPTH_TEST);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, resolveFrameBuffer->GetTextureID(0));
+    glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
     glBindVertexArray(0);
-    glEnable(GL_CULL_FACE);
+}
 
+void GLEngine::drawSceneDepthMap() {
+    model = glm::mat4(1.0f);
+    pipelines["shadow_map"].apply();
+    pipelines["shadow_map"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+    pipelines["shadow_map"].setModel(model);
+    sceneModel.draw(pipelines["shadow_map"].shader);
+}
+
+void GLEngine::drawCubeMap() {
     view = glm::mat4(glm::mat3(view));
     glDepthMask(GL_FALSE);
     glDepthFunc(GL_LEQUAL);
@@ -543,33 +640,25 @@ void GLEngine::draw() {
     glDepthMask(GL_TRUE);
     glDepthFunc(GL_LESS);
     view = camera.getViewMatrix();
+}
 
-
-    sceneFrameBuffer->Unbind();
-
-    glBindFramebuffer(GL_READ_FRAMEBUFFER,  sceneFrameBuffer->GetRendererID());
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER,  resolveFrameBuffer->GetRendererID());
-    glBlitFramebuffer(
-        0, 0, viewportW, viewportH,
-        0, 0, viewportW, viewportH,
-        GL_COLOR_BUFFER_BIT,
-        GL_NEAREST
-    );
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-
-
-    // Draw quad 
-    glViewport(0, 0, viewportW, viewportH);
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    pipelines["framebuffer"].apply();
-    glBindVertexArray(screenQuadMesh.vao);
-    glDisable(GL_DEPTH_TEST);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, resolveFrameBuffer->GetTextureID(0));
-    glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
+void GLEngine::drawEnvironmentMap()
+{
+    glDisable(GL_CULL_FACE);
+    model = glm::mat4(1.0f);
+    model = glm::translate(model, glm::vec3(0.0f, 250.0f, 0.0f));
+    model = glm::scale(model, glm::vec3(50.0f, 50.0f, 50.0f));
+    pipelines["environment_map"].shader.use();
+    pipelines["environment_map"].setModel(model);
+    pipelines["environment_map"].setView(view);
+    pipelines["environment_map"].setProj(proj);
+    pipelines["environment_map"].shader.setFloat("skybox", 0);
+    pipelines["environment_map"].shader.setVec3("cameraPos", camera.position);
+    glBindVertexArray(environmentCubeMesh.vao);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMapTex.id);
+    glDrawArrays(GL_TRIANGLES, 0, environmentCubeMesh.vertexCount);
     glBindVertexArray(0);
+    glEnable(GL_CULL_FACE);
 }
 
 void GLEngine::drawPointLights()
@@ -637,6 +726,10 @@ void GLEngine::drawSpotLight() {
 
 void GLEngine::drawScene()
 {
+    pipelines["blinn_phong_V2"].shader.setInt("diffuseMap", 0);
+    pipelines["blinn_phong_V2"].shader.setInt("shadowMap", 1);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, shadowFrameBuffer->GetTextureID(0));
+
     glPointSize(8.0f);
     model = glm::mat4(1.0f);
     pipelines["blinn_phong_V2"].apply();
@@ -644,7 +737,6 @@ void GLEngine::drawScene()
 
     sceneModel.draw(pipelines["blinn_phong_V2"].shader);
 }
-
 
 void GLEngine::drawPlants()
 {
@@ -665,7 +757,6 @@ void GLEngine::drawSceneNormal()
 
     sceneModel.draw(pipelines["geometry"].shader);
 }
-
 
 void GLEngine::drawLight()
 {
@@ -756,7 +847,6 @@ void GLEngine::drawCubes()
     }
     glBindVertexArray(0);
 }
-
 
 void GLEngine::cleanup() {
     glDeleteProgram(pipelines["light"].shader.ID);

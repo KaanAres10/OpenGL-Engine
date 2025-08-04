@@ -54,24 +54,46 @@ void Framebuffer::Invalidate()
                     m_TextureIDs[i], 0);
             }
             else {
-                // Regular texture
-                glGenTextures(1, &m_TextureIDs[i]);
-                glBindTexture(GL_TEXTURE_2D, m_TextureIDs[i]);
-                GLenum internalFormat = att.InternalFormat;
-                GLenum format = (internalFormat == GL_RGB8 ? GL_RGB :
-                    internalFormat == GL_RGBA8 ? GL_RGBA : GL_RGBA);
-                GLenum type = (internalFormat == GL_RGB16F || internalFormat == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE);
-                glTexImage2D(GL_TEXTURE_2D, 0, internalFormat,
-                    m_Specification.Width, m_Specification.Height,
-                    0, format, type, nullptr);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                glFramebufferTexture2D(GL_FRAMEBUFFER,
-                    att.AttachmentPoint,
-                    GL_TEXTURE_2D,
-                    m_TextureIDs[i], 0);
+                if (att.AttachmentPoint == GL_DEPTH_ATTACHMENT) {
+                    glGenTextures(1, &m_TextureIDs[i]);
+                    glBindTexture(GL_TEXTURE_2D, m_TextureIDs[i]);
+                    glTexImage2D(GL_TEXTURE_2D, 0, att.InternalFormat,
+                        m_Specification.Width, m_Specification.Height,
+                        0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+                    static const GLfloat border[] = { 1,1,1,1 };
+                    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border);
+
+                    glFramebufferTexture2D(GL_FRAMEBUFFER,
+                        GL_DEPTH_ATTACHMENT,
+                        GL_TEXTURE_2D,
+                        m_TextureIDs[i], 0);
+                }
+                else {
+                    // Regular texture
+                    glGenTextures(1, &m_TextureIDs[i]);
+                    glBindTexture(GL_TEXTURE_2D, m_TextureIDs[i]);
+                    GLenum internalFormat = att.InternalFormat;
+                    GLenum format = (internalFormat == GL_RGB8 ? GL_RGB :
+                        internalFormat == GL_RGBA8 ? GL_RGBA : GL_RGBA);
+                    GLenum type = (internalFormat == GL_RGB16F || internalFormat == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE);
+                    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat,
+                        m_Specification.Width, m_Specification.Height,
+                        0, format, type, nullptr);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                    glFramebufferTexture2D(GL_FRAMEBUFFER,
+                        att.AttachmentPoint,
+                        GL_TEXTURE_2D,
+                        m_TextureIDs[i], 0);
+                }
+               
             }
         }
         else {
@@ -111,6 +133,7 @@ void Framebuffer::Invalidate()
     }
     else {
         glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
     }
 
     if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {

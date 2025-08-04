@@ -2,11 +2,17 @@
 
 out vec4 FragColor;
 
-in vec3 normal;
-in vec3 fragPos;
-in vec2 texCoords;
+in VS_OUT {
+    vec3 fragPos;
+    vec3 normal;
+    vec2 texCoords;
+    vec4 fragPosLightSpace;
+} fs_in;
+
 
 uniform sampler2D diffuseMap;
+uniform sampler2D shadowMap;
+
 uniform vec3 viewPos;
 
 uniform vec3 dirLightDirection;
@@ -20,6 +26,40 @@ uniform int uPointLightCount;
 const float ambientStrength = 0.1;
 const float shininess       = 64.0;
 
+float ShadowCalculation(vec4 fragPosLightSpace, vec3 N)
+{
+    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.z > 1.0)
+        return 0.0;
+
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 || projCoords.y < 0.0 || projCoords.y > 1.0)
+        return 0.0;
+
+
+    float closestDepth = texture(shadowMap, projCoords.xy).r;
+
+    float currentDepth = projCoords.z;
+
+    float bias = max(0.1 * (1.0 - dot(N, dirLightDirection)), 0.01);
+
+
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
+    for(int x = -1; x <= 1; ++x)
+    {
+        for(int y = -1; y <= 1; ++y)
+        {
+            float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r; 
+            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;        
+        }    
+    }
+    shadow /= 9.0;
+
+    return shadow;
+}
+
 vec3 BlinnPhong(vec3 N, vec3 V, vec3 L, vec3 lightCol) {
     // diffuse term
     float diff = max(dot(N, L), 0.0);
@@ -31,11 +71,11 @@ vec3 BlinnPhong(vec3 N, vec3 V, vec3 L, vec3 lightCol) {
     return diffuse + specular;
 }
 
-vec3 CalcDirLight(vec3 N, vec3 V) {
+vec3 CalcDirLight(vec3 N, vec3 V, float shadow) {
     vec3 L     = normalize(-dirLightDirection);
     vec3 ambient = ambientStrength * dirLightColor;
     vec3 phong   = BlinnPhong(N, V, L, dirLightColor);
-    return ambient + phong;
+    return ambient + (1 - shadow) * phong;
 }
 
 vec3 CalcPointLight(vec3 N, vec3 V, vec3 P, vec3 lightPos, vec3 lightCol) {
@@ -48,17 +88,19 @@ vec3 CalcPointLight(vec3 N, vec3 V, vec3 P, vec3 lightPos, vec3 lightCol) {
 }
 
 void main() {
-    vec3 N     = normalize(normal);
-    vec3 V     = normalize(viewPos - fragPos);
-    vec4 tex = texture(diffuseMap, texCoords);
+    vec3 N     = normalize(fs_in.normal);
+    vec3 V     = normalize(viewPos - fs_in.fragPos);
+    vec4 tex = texture(diffuseMap, fs_in.texCoords);
     if (tex.a < 0.5)  
         discard;
     vec3 albedo= tex.rgb;
 
-    vec3 lighting = CalcDirLight(N, V);
+    float shadow = ShadowCalculation(fs_in.fragPosLightSpace, N);
+
+    vec3 lighting = CalcDirLight(N, V, shadow);
 
     for (int i = 0; i < uPointLightCount; ++i) {
-        lighting += CalcPointLight(N, V, fragPos,
+        lighting += CalcPointLight(N, V, fs_in.fragPos,
                                    pointLightPositions[i],
                                    pointLightColors[i]);
     }

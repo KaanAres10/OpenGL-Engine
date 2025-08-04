@@ -51,7 +51,6 @@ private:
 	GLMesh        floorMesh;
 
 
-	glm::vec3 lightPos{ 1.2f, 1.0f, 2.0f };
 
 	GLTexture     wallTex, faceTex, containerTex,
 		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex;
@@ -72,6 +71,15 @@ private:
 	std::unique_ptr<Framebuffer> sceneFrameBuffer;
 	std::unique_ptr<Framebuffer> resolveFrameBuffer;
 
+	static constexpr GLuint SHADOW_WIDTH = 4096;
+	static constexpr GLuint SHADOW_HEIGHT = 4096;
+	std::unique_ptr<Framebuffer> shadowFrameBuffer;
+	glm::mat4 lightSpaceMatrix;
+
+	glm::vec3 lightPos = glm::vec3(2000.0f, 2261.0f, -23.0f);
+	glm::vec3 lightTarget = glm::vec3(0.0f, 0.0f, 0.0f);
+	Camera   lightCamera;
+
 	std::unique_ptr<UniformBuffer<Matrices>> uboMatrices;
 
 	glm::mat4 model;
@@ -81,6 +89,12 @@ private:
 	void processEvent(SDL_Event&);
 	void update(float dt);
 	void draw();
+
+	void drawSceneDepthMap();
+
+	void drawCubeMap();
+
+	void drawEnvironmentMap();
 
 	void drawPointLights();
 
