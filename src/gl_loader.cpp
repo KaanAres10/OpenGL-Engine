@@ -197,6 +197,30 @@ GLTexture glloader::loadCubemap(const std::vector<std::string>& faces, bool gamm
     return tex;
 }
 
+GLTexture glloader::loadDepthCubemap(GLuint width, GLuint height) {
+    GLTexture tex{};
+    tex.width = width;
+    tex.height = height;
+    glGenTextures(1, &tex.id);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, tex.id);
+    for (unsigned int i = 0; i < 6; ++i) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+            0,
+            GL_DEPTH_COMPONENT24,
+            width,
+            height,
+            0,
+            GL_DEPTH_COMPONENT,
+            GL_FLOAT,
+            nullptr);
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    return tex;
+}
 
 GLMesh glloader::loadQuadWithTexture_Normal() {
     GLMesh m{};

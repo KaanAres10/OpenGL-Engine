@@ -51,9 +51,15 @@ private:
 	GLMesh        floorMesh;
 
 
+	bool enableImgui = true;
 
 	GLTexture     wallTex, faceTex, containerTex,
 		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex;
+
+	GLTexture depthCubemap;
+
+	std::vector<GLuint> depthCubemaps;
+	std::vector<std::unique_ptr<Framebuffer>> shadowCubeFBOs;
 
 	std::vector<glm::vec3> cubePositions;
 	std::vector<glm::vec3> pointLightPositions;
@@ -71,8 +77,9 @@ private:
 	std::unique_ptr<Framebuffer> sceneFrameBuffer;
 	std::unique_ptr<Framebuffer> resolveFrameBuffer;
 
-	static constexpr GLuint SHADOW_WIDTH = 4096;
-	static constexpr GLuint SHADOW_HEIGHT = 4096;
+	static constexpr GLuint SHADOW_WIDTH = 2048;
+	static constexpr GLuint SHADOW_HEIGHT = 2048;
+	float nearPlane = 0.1f, farPlane = 1000.0f;
 	std::unique_ptr<Framebuffer> shadowFrameBuffer;
 	glm::mat4 lightSpaceMatrix;
 
@@ -90,7 +97,9 @@ private:
 	void update(float dt);
 	void draw();
 
-	void drawSceneDepthMap();
+	void renderPointLightShadow();
+
+	void renderDirectionalLightShadow();
 
 	void drawCubeMap();
 
@@ -107,4 +116,9 @@ private:
 	void drawSceneNormal();
 	void drawLight();
 	void drawCubes();
+
+	void addPointLight(const glm::vec3& pos, const glm::vec3& col);
+
+	void removePointLight(int idx);
+
 };

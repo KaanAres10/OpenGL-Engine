@@ -52,7 +52,7 @@ void Framebuffer::Invalidate()
                     att.AttachmentPoint,
                     GL_TEXTURE_2D_MULTISAMPLE,
                     m_TextureIDs[i], 0);
-            }
+            } 
             else {
                 if (att.AttachmentPoint == GL_DEPTH_ATTACHMENT) {
                     glGenTextures(1, &m_TextureIDs[i]);
@@ -95,6 +95,36 @@ void Framebuffer::Invalidate()
                 }
                
             }
+        }
+        else if (att.Type == FramebufferAttachmentType::TextureCubeMap) {
+            // create a depth cubemap
+            glGenTextures(1, &m_TextureIDs[i]);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, m_TextureIDs[i]);
+            for (GLuint face = 0; face < 6; ++face) {
+                glTexImage2D(
+                    GL_TEXTURE_CUBE_MAP_POSITIVE_X + face,
+                    0,
+                    att.InternalFormat,             
+                    m_Specification.Width,
+                    m_Specification.Height,
+                    0,
+                    GL_DEPTH_COMPONENT,
+                    GL_FLOAT,
+                    nullptr
+                );
+            }
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+            glFramebufferTexture(
+                GL_FRAMEBUFFER,
+                att.AttachmentPoint,  
+                m_TextureIDs[i],
+                0
+            );
         }
         else {
             glGenRenderbuffers(1, &m_RenderbufferIDs[i]);

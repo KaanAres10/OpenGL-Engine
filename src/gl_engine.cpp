@@ -13,6 +13,13 @@
 #include <random>
 #include <cmath>
 #include "ImGuizmo.h"
+#include <array>
+#include <fmt/format.h>
+#include <numeric>
+
+const static int NR_POINT_LIGHTS = 16;
+constexpr int MAX_PL = NR_POINT_LIGHTS;
+
 
 static int   selectedLightIdx = -1;                 
 static float gizmoSnap[3] = { 0.f, 0.f, 0.f };    
@@ -40,8 +47,48 @@ static void ShowImGuizmoTranslation(int viewportW, int viewportH,
         position = glm::vec3(model[3]);               
 }
 
+void GLEngine::addPointLight(const glm::vec3& pos, const glm::vec3& col) {
+    pointLightPositions.push_back(pos);
+    pointLightColors.push_back(col);
+
+    GLTexture cube = glloader::loadDepthCubemap(SHADOW_WIDTH, SHADOW_HEIGHT);
+    depthCubemaps.push_back(cube.id);
+
+    FramebufferSpecification cubeSpec;
+    cubeSpec.Width = SHADOW_WIDTH;
+    cubeSpec.Height = SHADOW_HEIGHT;
+    cubeSpec.Samples = 1;
+    cubeSpec.Attachments = { {
+        FramebufferAttachmentType::TextureCubeMap,
+        GL_DEPTH_COMPONENT24,
+        GL_DEPTH_ATTACHMENT
+    } };
+    auto fbo = std::make_unique<Framebuffer>(cubeSpec);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo->GetRendererID());
+    glFramebufferTexture(GL_FRAMEBUFFER,
+        GL_DEPTH_ATTACHMENT,
+        cube.id, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    shadowCubeFBOs.push_back(std::move(fbo));
+}
+
+void GLEngine::removePointLight(int idx) {
+    glDeleteTextures(1, &depthCubemaps[idx]);
+    depthCubemaps.erase(depthCubemaps.begin() + idx);
+    shadowCubeFBOs.erase(shadowCubeFBOs.begin() + idx);
+    pointLightPositions.erase(pointLightPositions.begin() + idx);
+    pointLightColors.erase(pointLightColors.begin() + idx);
+}
 bool GLEngine::init(int w, int h) {
     if (SDL_Init(SDL_INIT_VIDEO)) return false;
+
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
@@ -76,13 +123,16 @@ bool GLEngine::init(int w, int h) {
         std::filesystem::current_path(projectRoot);
     }
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); (void)io;
-    //io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; 
-    ImGui::StyleColorsDark();
-    ImGui_ImplSDL2_InitForOpenGL(window, glContext);
-    ImGui_ImplOpenGL3_Init("#version 450");
+    if (enableImgui)
+    {
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO& io = ImGui::GetIO(); (void)io;
+        //io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; 
+        ImGui::StyleColorsDark();
+        ImGui_ImplSDL2_InitForOpenGL(window, glContext);
+        ImGui_ImplOpenGL3_Init("#version 450");
+    }
 
 
     glViewport(0, 0, w, h);
@@ -228,6 +278,13 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["shadow_cube"] = GLPipeline{
+    Shader("shadow_cube.vert", "shadow_cube.geom", "shadow_cube.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
@@ -292,7 +349,7 @@ bool GLEngine::init(int w, int h) {
     };
 
     pointLightColors = {
-    {0.0f, 0.4f, 1.0f}/*, 
+    {1.0f, 1.0f, 1.0f}/*,
     {0.0f, 0.0f, 1.0f}, 
     {0.0f, 1.0f, 0.0f}, 
     {1.0f, 1.0f, 1.0f}, */
@@ -359,8 +416,38 @@ bool GLEngine::init(int w, int h) {
     shadowFrameBuffer = std::make_unique<Framebuffer>(shadowSpec);
 
 
-    uboMatrices = std::make_unique<UniformBuffer<Matrices>>(0, GL_DYNAMIC_DRAW);
+    depthCubemap = glloader::loadDepthCubemap(SHADOW_WIDTH, SHADOW_HEIGHT);
 
+
+    depthCubemaps.reserve(pointLightPositions.size());
+    shadowCubeFBOs.reserve(pointLightPositions.size());
+
+    for (int i = 0; i < pointLightPositions.size(); ++i) {
+        GLTexture cube = glloader::loadDepthCubemap(SHADOW_WIDTH, SHADOW_HEIGHT);
+        depthCubemaps.push_back(cube.id);
+
+        FramebufferSpecification cubeSpec;
+        cubeSpec.Width = SHADOW_WIDTH;
+        cubeSpec.Height = SHADOW_HEIGHT;
+        cubeSpec.Samples = 1;
+        cubeSpec.Attachments = {
+            { FramebufferAttachmentType::TextureCubeMap, GL_DEPTH_COMPONENT24, GL_DEPTH_ATTACHMENT }
+        };
+
+       std::unique_ptr<Framebuffer> fbo = std::make_unique<Framebuffer>(cubeSpec);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, fbo->GetRendererID());
+        glFramebufferTexture(GL_FRAMEBUFFER,
+            GL_DEPTH_ATTACHMENT,
+            cube.id, 0);
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        shadowCubeFBOs.push_back(std::move(fbo));
+    }
+
+    uboMatrices = std::make_unique<UniformBuffer<Matrices>>(0, GL_DYNAMIC_DRAW);
 
     lightCamera.position = glm::vec3(-2.0f, 4.0f, -1.0f);
     lightCamera.yaw = glm::radians(45.0f);  
@@ -383,17 +470,17 @@ void GLEngine::run() {
         ImGuiIO& io = ImGui::GetIO();
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
-            ImGui_ImplSDL2_ProcessEvent(&e);
+            if (enableImgui) ImGui_ImplSDL2_ProcessEvent(&e);
             if (e.type == SDL_QUIT) {
                 running = false;
             }
             else if ((e.type == SDL_MOUSEMOTION || e.type == SDL_MOUSEBUTTONDOWN ||
                 e.type == SDL_MOUSEBUTTONUP || e.type == SDL_MOUSEWHEEL)
-                && io.WantCaptureMouse) {
+                && (enableImgui && io.WantCaptureMouse)) {
                 // ImGui handles mouse
             }
             else if ((e.type == SDL_KEYDOWN || e.type == SDL_KEYUP ||
-                e.type == SDL_TEXTINPUT) && io.WantCaptureKeyboard) {
+                e.type == SDL_TEXTINPUT) &&  (enableImgui && io.WantCaptureMouse)) {
                 // ImGui handles keyboard
             }
             else {
@@ -411,9 +498,13 @@ void GLEngine::run() {
             }
         }
 
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
+        if (enableImgui)
+        {
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
+        }
+     
 
         glm::mat4 view = camera.getViewMatrix();
         glm::mat4 proj = glm::perspective(
@@ -422,51 +513,55 @@ void GLEngine::run() {
             0.1f, 10000.0f
         );
 
-        ImGui::Begin("Lights");
 
-        {
-            std::vector<std::string> labels = { "None" };
-            for (size_t i = 0; i < pointLightPositions.size(); ++i)
-                labels.push_back("Light " + std::to_string(i));
+        if (enableImgui) {
+            ImGui::Begin("Lights");
 
-            std::vector<const char*> cstrs;
-            for (auto& s : labels) cstrs.push_back(s.c_str());
+            {
+                std::vector<std::string> labels = { "None" };
+                for (size_t i = 0; i < pointLightPositions.size(); ++i)
+                    labels.push_back("Light " + std::to_string(i));
 
-            int comboIdx = selectedLightIdx + 1;
-            ImGui::Combo("Selected light", &comboIdx,
-                cstrs.data(), int(cstrs.size()));
-            selectedLightIdx = comboIdx - 1;
+                std::vector<const char*> cstrs;
+                for (auto& s : labels) cstrs.push_back(s.c_str());
+
+                int comboIdx = selectedLightIdx + 1;
+                ImGui::Combo("Selected light", &comboIdx,
+                    cstrs.data(), int(cstrs.size()));
+                selectedLightIdx = comboIdx - 1;
+            }
+
+            if (selectedLightIdx >= 0)
+            {
+                ImGui::PushID(selectedLightIdx);
+
+                glm::vec3& pos = pointLightPositions[selectedLightIdx];
+                glm::vec3& col = pointLightColors[selectedLightIdx];
+
+                ShowImGuizmoTranslation(viewportW, viewportH, camera, pos);
+
+                ImGui::DragFloat3("Position", glm::value_ptr(pos),
+                    0.05f, -50.f, 50.f);
+                ImGui::ColorEdit3("Color", glm::value_ptr(col));
+
+                ImGui::PopID();
+            }
+
+            if (ImGui::Button("Add point light"))
+            {
+                addPointLight(glm::vec3(0.0f), glm::vec3(1.0f));
+                selectedLightIdx = int(pointLightPositions.size()) - 1;
+            }
+
+            if (selectedLightIdx >= 0 && ImGui::Button("Remove selected"))
+            {
+                removePointLight(selectedLightIdx);
+                selectedLightIdx = -1;
+            }
+
+            ImGui::End();
         }
-
-        if (selectedLightIdx >= 0)
-        {
-            ImGui::PushID(selectedLightIdx);
-
-            glm::vec3& pos = pointLightPositions[selectedLightIdx];
-            glm::vec3& col = pointLightColors[selectedLightIdx];
-
-            ShowImGuizmoTranslation(viewportW, viewportH, camera, pos);
-
-            ImGui::DragFloat3("Position", glm::value_ptr(pos),
-                0.05f, -50.f, 50.f);
-            ImGui::ColorEdit3("Color", glm::value_ptr(col));
-
-            ImGui::PopID();
-        }
-
-        if (ImGui::Button("Add point light"))
-        {
-            pointLightPositions.emplace_back(glm::vec3(0.f));
-            selectedLightIdx = int(pointLightPositions.size()) - 1;
-        }
-
-        if (selectedLightIdx >= 0 && ImGui::Button("Remove selected"))
-        {
-            pointLightPositions.erase(pointLightPositions.begin() + selectedLightIdx);
-            selectedLightIdx = -1;
-        }
-
-        ImGui::End();
+        
 
         uboMatrices->updateMember(0, proj);
         uboMatrices->updateMember(sizeof(glm::mat4), view);
@@ -480,9 +575,12 @@ void GLEngine::run() {
         draw();
 
       
-
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        if (enableImgui)
+        {
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
+ 
 
         SDL_GL_SwapWindow(window);
     }
@@ -504,44 +602,9 @@ void GLEngine::update(float dt) {
 }
 
 void GLEngine::draw() {
+    renderPointLightShadow();
 
-    static float l = -1000.0f, r = 1000.0f, b = -1000.0f, t = 1000.0f, n = 0.01f, f = 4000.0f;
-    ImGui::Begin("Shadow Frustum");
-    ImGui::DragFloat("Left", &l, 1.0f, -5000.0f, 5000.0f);
-    ImGui::DragFloat("Right", &r, 1.0f, -5000.0f, 5000.0f);
-    ImGui::DragFloat("Bottom", &b, 1.0f, -5000.0f, 5000.0f);
-    ImGui::DragFloat("Top", &t, 1.0f, -5000.0f, 5000.0f);
-    ImGui::DragFloat("Near", &n, 0.1f, 0.01f, 1000.0f);
-    ImGui::DragFloat("Far", &f, 0.1f, 0.01f, 10000.0f);
-    ImGui::End();
-
-    ImGui::Begin("Directional Light View");
-    ImGui::DragFloat3("Directional Light Position", glm::value_ptr(lightPos), 0.1f, -1000.0f, 1000.0f);
-    ImGui::DragFloat3("Light Target", glm::value_ptr(lightTarget), 0.1f, -1000.0f, 1000.0f);
-    ImGui::End();
-
-    ImGui::Begin("Camera");
-    ImGui::DragFloat3("Camera Position", glm::value_ptr(camera.position), 0.1f, -1000.0f, 1000.0f);
-    ImGui::DragFloat3("Camera Direction", glm::value_ptr(camera.front), 0.1f, -1000.0f, 1000.0f);
-
-    ImGui::End();
-
-    glm::mat4 lightProj = glm::ortho(l, r, b, t, n, f);
-    glm::mat4 lightView = glm::lookAt(
-        lightPos,
-        lightTarget,
-        glm::vec3(0.0f, 1.0f, 0.0f)
-    );
-    lightSpaceMatrix = lightProj * lightView;
-
-
-    // Draw the Depth Map
-    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-    shadowFrameBuffer->Bind();
-    glClear(GL_DEPTH_BUFFER_BIT);
-    drawSceneDepthMap();
-    shadowFrameBuffer->Unbind();
-
+    renderDirectionalLightShadow();
 
     // Draw the Actual Scene
     glViewport(0, 0, viewportW, viewportH);
@@ -563,22 +626,44 @@ void GLEngine::draw() {
     pipelines["blinn_phong_V2"].setModel(model);
     pipelines["blinn_phong_V2"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
-    // directional light
     pipelines["blinn_phong_V2"].shader.setVec3("dirLightDirection", glm::vec3(-0.840f, -0.541f, -0.035f));
     pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(1.0f));
 
-    // point lights
-    pipelines["blinn_phong_V2"].shader.setInt("uPointLightCount", (int)pointLightPositions.size());
-    for (size_t i = 0; i < pointLightPositions.size(); ++i) {
-        auto idx = std::to_string(i);
-        pipelines["blinn_phong_V2"].shader.setVec3("pointLightPositions[" + idx + "]", pointLightPositions[i]);
-        pipelines["blinn_phong_V2"].shader.setVec3("pointLightColors[" + idx + "]", pointLightColors[i]);
-    }
 
     pipelines["blinn_phong_V2"].shader.setInt("diffuseMap", 0);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
     pipelines["blinn_phong_V2"].shader.setInt("shadowMap", 1);
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, shadowFrameBuffer->GetTextureID(0));
+
+    // Shadow Cubemap binding for each point light
+    int pointCount = pointLightPositions.size();
+    std::array<GLint, MAX_PL> textureUnits;
+    for (int i = 0; i < MAX_PL; i++) {
+        int texUnit = 2 + i;
+        textureUnits[i] = texUnit;
+        glActiveTexture(GL_TEXTURE0 + texUnit);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, (i < pointCount) ? depthCubemaps[i] : depthCubemaps[0]);
+    }
+    glUniform1iv(glGetUniformLocation(pipelines["blinn_phong_V2"].shader.ID, "shadowCubes"),
+        MAX_PL, textureUnits.data());
+
+    GLfloat fars[MAX_PL];
+    for (int i = 0; i < MAX_PL; i++)
+        fars[i] = farPlane;
+    glUniform1fv(glGetUniformLocation(pipelines["blinn_phong_V2"].shader.ID, "far_planes"),
+        MAX_PL, fars);
+
+    pipelines["blinn_phong_V2"].shader.setInt("uPointLightCount", pointCount);
+    for (int i = 0; i < pointCount; ++i) {
+        pipelines["blinn_phong_V2"].shader.setVec3(
+            fmt::format("pointLightPositions[{}]", i),
+            pointLightPositions[i]
+        );
+        pipelines["blinn_phong_V2"].shader.setVec3(
+            fmt::format("pointLightColors[{}]", i),
+            pointLightColors[i]
+        );
+    }
     
     glBindVertexArray(planeMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
@@ -618,13 +703,85 @@ void GLEngine::draw() {
     glBindVertexArray(0);
 }
 
-void GLEngine::drawSceneDepthMap() {
+void GLEngine::renderPointLightShadow()
+{
+    float aspect = float(SHADOW_WIDTH) / float(SHADOW_HEIGHT);
+    glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), aspect, nearPlane, farPlane);
+    for (int i = 0; i < (int)pointLightPositions.size(); ++i) {
+        shadowCubeFBOs[i]->Bind();
+        glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        std::array<glm::mat4, 6> shadowTransforms;
+        shadowTransforms[0] = shadowProj * glm::lookAt(pointLightPositions[i], pointLightPositions[i] + glm::vec3(1, 0, 0), glm::vec3(0, -1, 0));
+        shadowTransforms[1] = shadowProj * glm::lookAt(pointLightPositions[i], pointLightPositions[i] + glm::vec3(-1, 0, 0), glm::vec3(0, -1, 0));
+        shadowTransforms[2] = shadowProj * glm::lookAt(pointLightPositions[i], pointLightPositions[i] + glm::vec3(0, 1, 0), glm::vec3(0, 0, 1));
+        shadowTransforms[3] = shadowProj * glm::lookAt(pointLightPositions[i], pointLightPositions[i] + glm::vec3(0, -1, 0), glm::vec3(0, 0, -1));
+        shadowTransforms[4] = shadowProj * glm::lookAt(pointLightPositions[i], pointLightPositions[i] + glm::vec3(0, 0, 1), glm::vec3(0, -1, 0));
+        shadowTransforms[5] = shadowProj * glm::lookAt(pointLightPositions[i], pointLightPositions[i] + glm::vec3(0, 0, -1), glm::vec3(0, -1, 0));
+
+        pipelines["shadow_cube"].apply();
+        for (int f = 0; f < 6; ++f) {
+            pipelines["shadow_cube"].shader.setMat4("shadowMatrices[" + std::to_string(f) + "]", shadowTransforms[f]);
+        }
+        pipelines["shadow_cube"].shader.setVec3("lightPos", pointLightPositions[i]);
+        pipelines["shadow_cube"].shader.setFloat("far_plane", farPlane);
+
+        glm::mat4 model = glm::mat4{ 1.0 };
+        pipelines["shadow_cube"].setModel(model);
+        sceneModel.draw(pipelines["shadow_cube"].shader);
+
+        shadowCubeFBOs[i]->Unbind();
+    }
+}
+
+void GLEngine::renderDirectionalLightShadow()
+{
+    static float l = -1000.0f, r = 1000.0f, b = -1000.0f, t = 1000.0f, n = 0.01f, f = 4000.0f;
+    if (enableImgui)
+    {
+        ImGui::Begin("Shadow Frustum");
+        ImGui::DragFloat("Left", &l, 1.0f, -5000.0f, 5000.0f);
+        ImGui::DragFloat("Right", &r, 1.0f, -5000.0f, 5000.0f);
+        ImGui::DragFloat("Bottom", &b, 1.0f, -5000.0f, 5000.0f);
+        ImGui::DragFloat("Top", &t, 1.0f, -5000.0f, 5000.0f);
+        ImGui::DragFloat("Near", &n, 0.1f, 0.01f, 1000.0f);
+        ImGui::DragFloat("Far", &f, 0.1f, 0.01f, 10000.0f);
+        ImGui::End();
+
+        ImGui::Begin("Directional Light View");
+        ImGui::DragFloat3("Directional Light Position", glm::value_ptr(lightPos), 0.1f, -1000.0f, 1000.0f);
+        ImGui::DragFloat3("Light Target", glm::value_ptr(lightTarget), 0.1f, -1000.0f, 1000.0f);
+        ImGui::End();
+
+        ImGui::Begin("Camera");
+        ImGui::DragFloat3("Camera Position", glm::value_ptr(camera.position), 0.1f, -1000.0f, 1000.0f);
+        ImGui::DragFloat3("Camera Direction", glm::value_ptr(camera.front), 0.1f, -1000.0f, 1000.0f);
+
+        ImGui::End();
+    }
+   
+
+    glm::mat4 lightProj = glm::ortho(l, r, b, t, n, f);
+    glm::mat4 lightView = glm::lookAt(
+        lightPos,
+        lightTarget,
+        glm::vec3(0.0f, 1.0f, 0.0f)
+    );
+    lightSpaceMatrix = lightProj * lightView;
+
+    glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+    shadowFrameBuffer->Bind();
+    glClear(GL_DEPTH_BUFFER_BIT);
     model = glm::mat4(1.0f);
     pipelines["shadow_map"].apply();
     pipelines["shadow_map"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
     pipelines["shadow_map"].setModel(model);
     sceneModel.draw(pipelines["shadow_map"].shader);
+    shadowFrameBuffer->Unbind();
 }
+
+
 
 void GLEngine::drawCubeMap() {
     view = glm::mat4(glm::mat3(view));

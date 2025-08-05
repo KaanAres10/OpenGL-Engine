@@ -6,7 +6,7 @@
 #include <iostream>
 
 // Specifies texture or renderbuffer for an attachment
-enum class FramebufferAttachmentType { Texture2D, Renderbuffer };
+enum class FramebufferAttachmentType { Texture2D, Renderbuffer, TextureCubeMap};
 
 // Defines one attachment
 struct FramebufferAttachmentSpecification {
