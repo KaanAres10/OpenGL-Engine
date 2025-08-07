@@ -58,7 +58,7 @@ void Model::draw(Shader& shader) {
 void Model::loadModel(string path)
 {
 	Assimp::Importer importer;
-	const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs);
+	const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_FlipUVs | aiProcess_CalcTangentSpace);
 
 	if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
 	{
@@ -109,6 +109,17 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 			vertex.texCoords = { 0.0f, 0.0f };
 		}
 
+		if (mesh->HasTangentsAndBitangents()) {
+			vertex.tangent = {
+			  mesh->mTangents[i].x,
+			  mesh->mTangents[i].y,
+			  mesh->mTangents[i].z
+			};
+		}
+		else {
+			vertex.tangent = glm::vec3(1, 0, 0);
+		}
+
 		vertices.push_back(vertex);
 	}
 
@@ -130,6 +141,13 @@ Mesh Model::processMesh(aiMesh* mesh, const aiScene* scene)
 		vector<Texture> specularMaps = loadMaterialTextures(material,
 			aiTextureType_SPECULAR, "texture_specular", scene);
 		textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
+
+		for (aiTextureType normalType : { aiTextureType_HEIGHT, aiTextureType_NORMALS }) {
+			vector<Texture> normalMap = loadMaterialTextures(material, normalType,"texture_normal",
+				scene
+			);
+			textures.insert(textures.end(), normalMap.begin(), normalMap.end());
+		}
 	}
 
 	return Mesh(vertices, indices, textures);

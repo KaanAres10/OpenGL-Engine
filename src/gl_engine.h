@@ -54,7 +54,7 @@ private:
 	bool enableImgui = true;
 
 	GLTexture     wallTex, faceTex, containerTex,
-		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex;
+		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex, brickWallTex, brickWallNormalTex;
 
 	GLTexture depthCubemap;
 

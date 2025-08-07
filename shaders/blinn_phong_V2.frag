@@ -7,11 +7,17 @@ in VS_OUT {
     vec3 normal;
     vec2 texCoords;
     vec4 fragPosLightSpace;
+    mat3 TBN;
 } fs_in;
 
 
 uniform sampler2D diffuseMap;
+uniform sampler2D specularMap;
+uniform sampler2D normalMap;
 uniform sampler2D shadowMap;
+
+uniform bool hasSpecularMap;
+uniform bool hasNormalMap;
 
 uniform vec3 viewPos;
 
@@ -94,27 +100,28 @@ float CalcPointShadow(int index, vec3 fragPos) {
     return  shadow;
 }
 
-vec3 BlinnPhong(vec3 N, vec3 V, vec3 L, vec3 lightCol) {
+vec3 BlinnPhong(vec3 N, vec3 V, vec3 L, vec3 lightCol, float specStrength) {
     // diffuse term
     float diff = max(dot(N, L), 0.0);
     vec3 diffuse  = diff * lightCol;
     // specular term
     vec3 H        = normalize(L + V);
-    float spec    = pow(max(dot(N, H), 0.0), shininess);
+    float spec    = pow(max(dot(N, H), 0.0), shininess) * specStrength;
     vec3 specular = spec * lightCol;
     return diffuse + specular;
 }
 
-vec3 CalcDirLight(vec3 N, vec3 V, float shadow) {
+vec3 CalcDirLight(vec3 N, vec3 V, float shadow, float specStrength) {
     vec3 L     = normalize(-dirLightDirection);
     vec3 ambient = ambientStrength * dirLightColor;
-    vec3 phong   = BlinnPhong(N, V, L, dirLightColor);
+    vec3 phong   = BlinnPhong(N, V, L, dirLightColor, specStrength);
+
     return ambient + (1 - shadow) * phong;
 }
 
-vec3 CalcPointLight(vec3 N, vec3 V, vec3 P, vec3 lightPos, vec3 lightCol) {
+vec3 CalcPointLight(vec3 N, vec3 V, vec3 P, vec3 lightPos, vec3 lightCol, float specStrength) {
     vec3 L    = normalize(lightPos - P);
-    vec3 phong = BlinnPhong(N, V, L, lightCol);
+    vec3 phong = BlinnPhong(N, V, L, lightCol, specStrength);
 
     float d    = length(lightPos - P);
     float att  = 1.0 / (1.0 + 0.0000198f*d + 0.0000155f*d*d);
@@ -122,14 +129,22 @@ vec3 CalcPointLight(vec3 N, vec3 V, vec3 P, vec3 lightPos, vec3 lightCol) {
 }
 
 void main() {
-    vec3 N     = normalize(fs_in.normal);
-    vec3 V     = normalize(viewPos - fs_in.fragPos);
+    vec3 Ngeom = normalize(fs_in.normal);
+    vec3 normalTex = texture(normalMap, fs_in.texCoords).rgb;
+    vec3 Nmap = normalize(fs_in.TBN * (normalTex * 2.0 - 1.0));
+
+    vec3 N = hasNormalMap ? Nmap : Ngeom;
+
+    vec3 V  = normalize(viewPos - fs_in.fragPos);
+    
+    float specStrength = hasSpecularMap ? texture(specularMap, fs_in.texCoords).r: 1.0;
+
     vec4 tex = texture(diffuseMap, fs_in.texCoords);
     if (tex.a < 0.5)  
         discard;
     vec3 albedo= tex.rgb;
 
-    float shadow = CalcDirShadow(fs_in.fragPosLightSpace, N);
+    float shadow = CalcDirShadow(fs_in.fragPosLightSpace, Ngeom);
     float ptFill = 0.0;
     for(int i = 0; i < uPointLightCount; i++) {
         float d = length(pointLightPositions[i] - fs_in.fragPos);
@@ -141,13 +156,13 @@ void main() {
     shadow = mix(shadow, 0.0, ptFill);
 
 
-    vec3 lighting = CalcDirLight(N, V, shadow);
+    vec3 lighting = CalcDirLight(N, V, shadow, specStrength);
 
-    for (int i = 0; i < uPointLightCount; ++i) {
+    for (int i = 0; i < uPointLightCount; i++) {
         float ptShadow = CalcPointShadow(i, fs_in.fragPos);
         vec3 ptLight  = CalcPointLight(N, V, fs_in.fragPos,
                                        pointLightPositions[i],
-                                       pointLightColors[i]);
+                                       pointLightColors[i], specStrength);
         lighting += (1.0 - ptShadow) * ptLight;
     }
 

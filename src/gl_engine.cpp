@@ -322,11 +322,12 @@ bool GLEngine::init(int w, int h) {
         });
     floorTex = glloader::loadTexture("assets/textures/floor.png", true);
     whiteTex = glloader::loadTexture("assets/textures/white.jpg", true);
+    brickWallTex = glloader::loadTexture("assets/textures/brickwall.jpg", true);
+    brickWallNormalTex = glloader::loadTexture("assets/textures/brickwall_normal.jpg");
 
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
     plantModel.loadModel("assets/plant/scene.gltf");
-
 
     cubePositions = {
        {  0.0f,  0.0f,   0.0f },
@@ -621,6 +622,7 @@ void GLEngine::draw() {
     uboMatrices->updateMember(sizeof(glm::mat4), view);
 
 
+
     pipelines["blinn_phong_V2"].apply();
     pipelines["blinn_phong_V2"].shader.setVec3("viewPos", camera.position);
     pipelines["blinn_phong_V2"].setModel(model);
@@ -629,17 +631,11 @@ void GLEngine::draw() {
     pipelines["blinn_phong_V2"].shader.setVec3("dirLightDirection", glm::vec3(-0.840f, -0.541f, -0.035f));
     pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(1.0f));
 
-
-    pipelines["blinn_phong_V2"].shader.setInt("diffuseMap", 0);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, floorTex.id);
-    pipelines["blinn_phong_V2"].shader.setInt("shadowMap", 1);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, shadowFrameBuffer->GetTextureID(0));
-
     // Shadow Cubemap binding for each point light
     int pointCount = pointLightPositions.size();
     std::array<GLint, MAX_PL> textureUnits;
     for (int i = 0; i < MAX_PL; i++) {
-        int texUnit = 2 + i;
+        int texUnit = 5 + i;
         textureUnits[i] = texUnit;
         glActiveTexture(GL_TEXTURE0 + texUnit);
         glBindTexture(GL_TEXTURE_CUBE_MAP, (i < pointCount) ? depthCubemaps[i] : depthCubemaps[0]);
@@ -664,10 +660,11 @@ void GLEngine::draw() {
             pointLightColors[i]
         );
     }
-    
-    glBindVertexArray(planeMesh.vao);
+
+
+  /*  glBindVertexArray(planeMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
-    glBindVertexArray(0);
+    glBindVertexArray(0);*/
 
     drawScene();
 
@@ -883,14 +880,14 @@ void GLEngine::drawSpotLight() {
 
 void GLEngine::drawScene()
 {
-    pipelines["blinn_phong_V2"].shader.setInt("diffuseMap", 0);
-    pipelines["blinn_phong_V2"].shader.setInt("shadowMap", 1);
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, shadowFrameBuffer->GetTextureID(0));
+    pipelines["blinn_phong_V2"].apply();
+
+    pipelines["blinn_phong_V2"].shader.setInt("shadowMap", 4);
+    glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, shadowFrameBuffer->GetTextureID(0));
 
     glPointSize(8.0f);
     model = glm::mat4(1.0f);
-    pipelines["blinn_phong_V2"].apply();
-    pipelines["blinn_phong_V2"].shader.setMat4("blinn_phong_V2", model);
+    pipelines["blinn_phong_V2"].setModel(model);
 
     sceneModel.draw(pipelines["blinn_phong_V2"].shader);
 }
