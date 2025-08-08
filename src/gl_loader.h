@@ -14,6 +14,7 @@ namespace glloader {
 	GLMesh loadCubeWithTexture();
 	GLMesh loadPlaneWithTexture();
 	GLMesh loadPlaneWithTexture_Normal();
+	GLMesh loadPlaneWithTexture_Normal_Tangent();
 	GLMesh loadCubeOnlyPosition();
 	GLMesh loadPointsNDC();
 	GLMesh loadCubeWithoutTexture();

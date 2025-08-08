@@ -54,7 +54,8 @@ private:
 	bool enableImgui = true;
 
 	GLTexture     wallTex, faceTex, containerTex,
-		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex, brickWallTex, brickWallNormalTex;
+		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex, brickWallTex, brickWallNormalTex, brickWallDisplacementTex, 
+		toyBoxTex, toyBoxNormalTex, toyBoxDisTex;
 
 	GLTexture depthCubemap;
 
@@ -104,6 +105,8 @@ private:
 	void drawCubeMap();
 
 	void drawEnvironmentMap();
+
+	void drawDisplacementToy();
 
 	void drawPointLights();
 

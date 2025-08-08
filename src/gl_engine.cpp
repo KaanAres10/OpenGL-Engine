@@ -288,13 +288,22 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["parallax"] = GLPipeline{
+    Shader("parallax.vert", "parallax.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
+
+
     lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
 
     cubeMesh = glloader::loadCubeWithTexture_Normal();
 
-    planeMesh = glloader::loadPlaneWithTexture_Normal();
+    planeMesh = glloader::loadPlaneWithTexture_Normal_Tangent();
 
     screenQuadMesh = glloader::loadQuadWithTextureNDC();
 
@@ -324,8 +333,13 @@ bool GLEngine::init(int w, int h) {
         });
     floorTex = glloader::loadTexture("assets/textures/floor.png", true);
     whiteTex = glloader::loadTexture("assets/textures/white.jpg", true);
-    brickWallTex = glloader::loadTexture("assets/textures/brickwall.jpg", true);
-    brickWallNormalTex = glloader::loadTexture("assets/textures/brickwall_normal.jpg");
+    brickWallTex = glloader::loadTexture("assets/textures/bricks/bricks2.jpg", true);
+    brickWallNormalTex = glloader::loadTexture("assets/textures//bricks/bricks2_normal.jpg", true);
+    brickWallDisplacementTex = glloader::loadTexture("assets/textures//bricks/bricks2_disp.jpg", true);
+    toyBoxTex = glloader::loadTexture("assets/textures/wooden_toy/toy_box_diffuse.png", true);
+    toyBoxNormalTex = glloader::loadTexture("assets/textures/wooden_toy/toy_box_normal.png", true);
+    toyBoxDisTex = glloader::loadTexture("assets/textures/wooden_toy/toy_box_disp.png", true);
+
 
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
@@ -498,7 +512,7 @@ void GLEngine::run() {
                 // ImGui handles mouse
             }
             else if ((e.type == SDL_KEYDOWN || e.type == SDL_KEYUP ||
-                e.type == SDL_TEXTINPUT) &&  (enableImgui && io.WantCaptureMouse)) {
+                e.type == SDL_TEXTINPUT) &&  (enableImgui && io.WantCaptureKeyboard)) {
                 // ImGui handles keyboard
             }
             else {
@@ -677,10 +691,13 @@ void GLEngine::draw() {
             pointLightColors[i]
         );
     }
+   
 
     drawScene();
      
     drawCubeMap();
+
+    drawDisplacementToy();
 
     sceneFrameBuffer->Unbind();
 
@@ -825,6 +842,28 @@ void GLEngine::drawEnvironmentMap()
     glBindVertexArray(0);
     glEnable(GL_CULL_FACE);
 }
+
+void GLEngine::drawDisplacementToy()
+{
+    pipelines["parallax"].apply();
+    pipelines["parallax"].shader.setVec3("viewPos", camera.position);
+    pipelines["parallax"].shader.setVec3("pointLightPositions[0]", pointLightPositions[0]);
+    model = glm::translate(model, glm::vec3(0.0, 50.0, 0.0));
+    model = glm::scale(model, glm::vec3(50, 50, 50));
+    pipelines["parallax"].shader.setInt("diffuseMap", 0);
+    pipelines["parallax"].shader.setInt("normalMap", 2);
+    pipelines["parallax"].shader.setInt("depthMap", 3);
+    pipelines["parallax"].shader.setFloat("height_scale", 0.2);
+    pipelines["parallax"].setModel(model);
+
+    glBindVertexArray(planeMesh.vao);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, toyBoxTex.id);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, toyBoxNormalTex.id);
+    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, toyBoxDisTex.id);
+    glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
+    glBindVertexArray(0);
+}
+
 
 void GLEngine::drawPointLights()
 {
