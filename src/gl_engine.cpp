@@ -25,6 +25,8 @@ static int frameCount = 0;
 
 static int   selectedLightIdx = -1;                 
 static float gizmoSnap[3] = { 0.f, 0.f, 0.f };    
+static float exposure = 0.05f;
+
 static void ShowImGuizmoTranslation(int viewportW, int viewportH,
     const Camera& cam,
     glm::vec3& position)
@@ -296,6 +298,14 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["hdr"] = GLPipeline{
+    Shader("hdr.vert", "hdr.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
+
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
@@ -407,18 +417,19 @@ bool GLEngine::init(int w, int h) {
     frameBufferSpec.Height = h;
     frameBufferSpec.Samples = 4;
 
+    // HDR-Framebuffer
     frameBufferSpec.Attachments = {
-        {FramebufferAttachmentType::Texture2D, GL_RGB8, GL_COLOR_ATTACHMENT0},
+        {FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT0},
         {FramebufferAttachmentType::Renderbuffer, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL_ATTACHMENT}
     };
 
     sceneFrameBuffer = std::make_unique<Framebuffer>(frameBufferSpec);
 
-
+    // HDR-Framebuffer
     FramebufferSpecification resolveSpec = frameBufferSpec;
     resolveSpec.Samples = 1;  
     resolveSpec.Attachments = {
-        { FramebufferAttachmentType::Texture2D, GL_RGB8, GL_COLOR_ATTACHMENT0 },
+        { FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT0 },
     };
     resolveFrameBuffer = std::make_unique<Framebuffer>(resolveSpec);
 
@@ -593,6 +604,15 @@ void GLEngine::run() {
 
             ImGui::End();
         }
+
+        if (enableImgui)
+        {
+            ImGui::Begin("Screen");
+            ImGui::DragFloat("Exposure Level", &exposure,0.001f, 0.0f, 100.0f);
+            ImGui::End();
+        }
+
+
         
 
         uboMatrices->updateMember(0, proj);
@@ -660,7 +680,7 @@ void GLEngine::draw() {
     pipelines["blinn_phong_V2"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
     pipelines["blinn_phong_V2"].shader.setVec3("dirLightDirection", glm::vec3(-0.840f, -0.541f, -0.035f));
-    pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(1.0f));
+    pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(100.0f));
 
     // Shadow Cubemap binding for each point light
     int pointCount = pointLightPositions.size();
@@ -691,13 +711,10 @@ void GLEngine::draw() {
             pointLightColors[i]
         );
     }
-   
 
     drawScene();
      
     drawCubeMap();
-
-    drawDisplacementToy();
 
     sceneFrameBuffer->Unbind();
 
@@ -718,8 +735,10 @@ void GLEngine::draw() {
     glViewport(0, 0, viewportW, viewportH);
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    pipelines["framebuffer"].apply();
-    pipelines["framebuffer"].shader.setInt("screenTexture", 0);
+    pipelines["hdr"].apply();
+    pipelines["hdr"].shader.setInt("screenTexture", 0);
+    pipelines["hdr"].shader.setFloat("exposure", exposure);
+
 
     glBindVertexArray(screenQuadMesh.vao);
     glDisable(GL_DEPTH_TEST);
