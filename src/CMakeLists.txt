@@ -59,3 +59,17 @@ target_compile_definitions(OpenGL-Engine PRIVATE
 
 add_custom_target(Shaders SOURCES ${SHADER_FILES})
 add_dependencies(OpenGL-Engine Shaders)
+
+if (MSVC)
+  target_compile_options(OpenGL-Engine PRIVATE
+    # full PDB debug info
+    $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/ZI>
+    # disable optimizations
+    $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/Od>
+    # runtime checks
+    $<$<AND:$<CONFIG:Debug>,$<CXX_COMPILER_ID:MSVC>>:/RTC1>
+  )
+  set_target_properties(OpenGL-Engine PROPERTIES
+    LINK_FLAGS_DEBUG "/INCREMENTAL"
+  )
+endif()

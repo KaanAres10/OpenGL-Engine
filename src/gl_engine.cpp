@@ -20,6 +20,8 @@
 const static int NR_POINT_LIGHTS = 16;
 constexpr int MAX_PL = NR_POINT_LIGHTS;
 
+static float fpsTimer = 0.0f;
+static int frameCount = 0;
 
 static int   selectedLightIdx = -1;                 
 static float gizmoSnap[3] = { 0.f, 0.f, 0.f };    
@@ -464,12 +466,27 @@ void GLEngine::run() {
     Uint32 last = SDL_GetTicks();
 
     while (running) {
+
         Uint32 now = SDL_GetTicks();
         float dt = (now - last) * 0.001f;
         last = now;
-
+        enableImgui = true;
         ImGuiIO& io = ImGui::GetIO();
         SDL_Event e;
+
+        frameCount++;
+        fpsTimer += dt;
+
+        for (auto& [name, pipe] : pipelines) {
+            pipe.shader.reloadIfChanged();
+        }
+
+        if (fpsTimer >= 1.0f) {
+            std::cout << "FPS: " << frameCount << "\n";
+            frameCount = 0;
+            fpsTimer = 0.0f;
+        }
+
         while (SDL_PollEvent(&e)) {
             if (enableImgui) ImGui_ImplSDL2_ProcessEvent(&e);
             if (e.type == SDL_QUIT) {
@@ -623,7 +640,7 @@ void GLEngine::draw() {
 
 
 
-    pipelines["blinn_phong_V2"].apply();
+    pipelines["blinn_phong_V2"].shader.use();
     pipelines["blinn_phong_V2"].shader.setVec3("viewPos", camera.position);
     pipelines["blinn_phong_V2"].setModel(model);
     pipelines["blinn_phong_V2"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
@@ -661,17 +678,11 @@ void GLEngine::draw() {
         );
     }
 
-
-  /*  glBindVertexArray(planeMesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
-    glBindVertexArray(0);*/
-
     drawScene();
-
+     
     drawCubeMap();
 
     sceneFrameBuffer->Unbind();
-
 
     // MSAA to Single Sample Framebuffer
     glBindFramebuffer(GL_READ_FRAMEBUFFER,  sceneFrameBuffer->GetRendererID());
@@ -894,7 +905,7 @@ void GLEngine::drawScene()
 
 void GLEngine::drawPlants()
 {
-    pipelines["instancing"].shader.use();
+    pipelines["instancing"].apply();
     plantModel.setInstanceData(grid.modelMatrices);
     plantModel.drawInstanced(pipelines["instancing"].shader,
         static_cast<GLsizei>(grid.N));
