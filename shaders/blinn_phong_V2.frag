@@ -1,6 +1,7 @@
 #version 450 core
 
-out vec4 FragColor;
+layout(location = 0) out vec4 FragColor; // main
+layout(location = 1) out vec4 BrightColor; // bright 
 
 in VS_OUT {
     vec3 fragPos;
@@ -169,4 +170,12 @@ void main() {
     vec3 color = albedo * lighting;
 
     FragColor = vec4(color, 1.0);
+
+    // gray-scale
+    float brightness = dot(FragColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+
+    if (brightness > 1.0)
+        BrightColor = vec4(FragColor.rgb, 1.0);
+    else 
+        BrightColor =  vec4(0.0, 0.0, 0.0, 1.0);
 }

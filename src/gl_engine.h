@@ -55,7 +55,9 @@ private:
 
 	GLTexture     wallTex, faceTex, containerTex,
 		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex, brickWallTex, brickWallNormalTex, brickWallDisplacementTex, 
-		toyBoxTex, toyBoxNormalTex, toyBoxDisTex;
+		toyBoxTex, toyBoxNormalTex, toyBoxDisTex, blackTex;
+
+	GLuint blurredBloomTex;
 
 	GLTexture depthCubemap;
 
@@ -77,6 +79,8 @@ private:
 	FramebufferSpecification frameBufferSpec;
 	std::unique_ptr<Framebuffer> sceneFrameBuffer;
 	std::unique_ptr<Framebuffer> resolveFrameBuffer;
+	std::unique_ptr<Framebuffer> pingFrameBuffer;
+	std::unique_ptr<Framebuffer> pongFrameBuffer;
 
 	static constexpr GLuint SHADOW_WIDTH = 2048;
 	static constexpr GLuint SHADOW_HEIGHT = 2048;
@@ -98,6 +102,8 @@ private:
 	void update(float dt);
 	void draw();
 
+	void blurBloom();
+
 	void renderPointLightShadow();
 
 	void renderDirectionalLightShadow();
@@ -107,6 +113,8 @@ private:
 	void drawEnvironmentMap();
 
 	void drawDisplacementToy();
+
+	void drawLightBox();
 
 	void drawPointLights();
 

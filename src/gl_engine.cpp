@@ -25,7 +25,11 @@ static int frameCount = 0;
 
 static int   selectedLightIdx = -1;                 
 static float gizmoSnap[3] = { 0.f, 0.f, 0.f };    
-static float exposure = 0.05f;
+static float exposure = 1.0f;
+static float block_size = 1.0f;
+
+static bool bloomEnabled = true;
+static int  blurIterations = 10;  
 
 static void ShowImGuizmoTranslation(int viewportW, int viewportH,
     const Camera& cam,
@@ -306,6 +310,23 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["blur"] = GLPipeline{
+     Shader("blur.vert", "blur.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
+
+    pipelines["light_box"] = GLPipeline{
+    Shader("light_box.vert", "light_box.frag"),
+    BlendMode::None,
+    true,
+    GL_BACK,
+    GL_FILL
+    };
+
+
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
@@ -349,6 +370,7 @@ bool GLEngine::init(int w, int h) {
     toyBoxTex = glloader::loadTexture("assets/textures/wooden_toy/toy_box_diffuse.png", true);
     toyBoxNormalTex = glloader::loadTexture("assets/textures/wooden_toy/toy_box_normal.png", true);
     toyBoxDisTex = glloader::loadTexture("assets/textures/wooden_toy/toy_box_disp.png", true);
+    blackTex = glloader::loadTexture("assets/textures/black.jpg", true);
 
 
 
@@ -417,21 +439,38 @@ bool GLEngine::init(int w, int h) {
     frameBufferSpec.Height = h;
     frameBufferSpec.Samples = 4;
 
-    // HDR-Framebuffer
+    // HDR-Framebuffer MSAA
     frameBufferSpec.Attachments = {
         {FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT0},
+        {FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT1},
+
         {FramebufferAttachmentType::Renderbuffer, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL_ATTACHMENT}
     };
-
     sceneFrameBuffer = std::make_unique<Framebuffer>(frameBufferSpec);
 
-    // HDR-Framebuffer
+    
+    // Ping-Pong Framebuffer for Bloom
+    FramebufferSpecification pingPongSpec;
+    pingPongSpec.Width = viewportW;
+    pingPongSpec.Height = viewportH;
+    pingPongSpec.Samples = 1;
+    pingPongSpec.Attachments = {
+        { FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT0 }
+    };
+
+    pingFrameBuffer = std::make_unique<Framebuffer>(pingPongSpec);
+    pongFrameBuffer = std::make_unique<Framebuffer>(pingPongSpec);
+
+
+    // HDR-Framebuffer Single Sample
     FramebufferSpecification resolveSpec = frameBufferSpec;
     resolveSpec.Samples = 1;  
     resolveSpec.Attachments = {
-        { FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT0 },
+        {FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT0},
+        {FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT1},
     };
     resolveFrameBuffer = std::make_unique<Framebuffer>(resolveSpec);
+
 
     
     FramebufferSpecification shadowSpec;
@@ -537,6 +576,8 @@ void GLEngine::run() {
                     glViewport(0, 0, viewportW, viewportH);
                     sceneFrameBuffer->Resize(viewportW, viewportH);
                     resolveFrameBuffer->Resize(viewportW, viewportH);
+                    pingFrameBuffer->Resize(viewportW, viewportH);
+                    pongFrameBuffer->Resize(viewportW, viewportH);
                 }
             }
         }
@@ -608,7 +649,10 @@ void GLEngine::run() {
         if (enableImgui)
         {
             ImGui::Begin("Screen");
-            ImGui::DragFloat("Exposure Level", &exposure,0.001f, 0.0f, 100.0f);
+            ImGui::DragFloat("Exposure Level", &exposure, 0.1f, 0.0f, 10.0f);
+            ImGui::DragFloat("Block Size", &block_size, 1.0f, 1.0f, 20.0f);
+            ImGui::Checkbox("Bloom Enabled", &bloomEnabled);
+
             ImGui::End();
         }
 
@@ -680,7 +724,7 @@ void GLEngine::draw() {
     pipelines["blinn_phong_V2"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
 
     pipelines["blinn_phong_V2"].shader.setVec3("dirLightDirection", glm::vec3(-0.840f, -0.541f, -0.035f));
-    pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(100.0f));
+    pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(1.0f));
 
     // Shadow Cubemap binding for each point light
     int pointCount = pointLightPositions.size();
@@ -712,39 +756,107 @@ void GLEngine::draw() {
         );
     }
 
+
     drawScene();
      
     drawCubeMap();
 
+    drawLightBox();
+
     sceneFrameBuffer->Unbind();
 
     // MSAA to Single Sample Framebuffer
-    glBindFramebuffer(GL_READ_FRAMEBUFFER,  sceneFrameBuffer->GetRendererID());
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER,  resolveFrameBuffer->GetRendererID());
+    // Main Color
+    glBindFramebuffer(GL_READ_FRAMEBUFFER,  sceneFrameBuffer->GetRendererID()); glReadBuffer(GL_COLOR_ATTACHMENT0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER,  resolveFrameBuffer->GetRendererID()); glDrawBuffer(GL_COLOR_ATTACHMENT0);
     glBlitFramebuffer(
         0, 0, viewportW, viewportH,
         0, 0, viewportW, viewportH,
         GL_COLOR_BUFFER_BIT,
         GL_NEAREST
     );
+
+
+    // Bright Color
+    glReadBuffer(GL_COLOR_ATTACHMENT1);
+    glDrawBuffer(GL_COLOR_ATTACHMENT1);
+    glBlitFramebuffer(
+        0, 0, viewportW, viewportH,
+        0, 0, viewportW, viewportH,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST
+    );
+
     glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
-
+    blurBloom();
+    
     // Draw Screen Quad 
     glViewport(0, 0, viewportW, viewportH);
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    pipelines["hdr"].apply();
-    pipelines["hdr"].shader.setInt("screenTexture", 0);
-    pipelines["hdr"].shader.setFloat("exposure", exposure);
+    pipelines["framebuffer"].apply();
+    pipelines["framebuffer"].shader.setInt("screenTexture", 0);
+    pipelines["framebuffer"].shader.setInt("bloomTexture", 1);
+
+    pipelines["framebuffer"].shader.setFloat("exposure", exposure);
+    pipelines["framebuffer"].shader.setFloat("block_size", block_size);
 
 
     glBindVertexArray(screenQuadMesh.vao);
     glDisable(GL_DEPTH_TEST);
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, resolveFrameBuffer->GetTextureID(0));
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, blurredBloomTex);
+
     glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
     glBindVertexArray(0);
+}
+
+void GLEngine::blurBloom()
+{
+    blurredBloomTex = resolveFrameBuffer->GetTextureID(1);
+    if (bloomEnabled && blurIterations > 0)
+    {
+        bool horizontal = true;
+
+        pipelines["blur"].apply();
+        pipelines["blur"].shader.setInt("image", 0);
+
+        for (int i = 0; i < blurIterations; ++i) {
+            // Target alternates between ping and pong
+            Framebuffer* target = horizontal ? pingFrameBuffer.get() : pongFrameBuffer.get();
+            target->Bind();
+
+            glViewport(0, 0, viewportW, viewportH);
+            glDisable(GL_DEPTH_TEST);
+            glClear(GL_COLOR_BUFFER_BIT);
+
+            pipelines["blur"].shader.setInt("horizontal", horizontal);
+
+            glActiveTexture(GL_TEXTURE0);
+            if (i == 0) {
+                glBindTexture(GL_TEXTURE_2D, resolveFrameBuffer->GetTextureID(1)); // first pass: bright texture
+            }
+            else {
+                // subsequent passes: sample from the other buffer
+                GLuint sourceTex = (horizontal ? pongFrameBuffer.get() : pingFrameBuffer.get())->GetTextureID(0);
+                glBindTexture(GL_TEXTURE_2D, sourceTex);
+            }
+
+            glBindVertexArray(screenQuadMesh.vao);
+            glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
+            glBindVertexArray(0);
+
+            horizontal = !horizontal;
+        }
+        blurredBloomTex = (blurIterations % 2 == 0 ? pongFrameBuffer.get() : pingFrameBuffer.get())->GetTextureID(0);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    else {
+        blurredBloomTex = blackTex.id;
+    }
 }
 
 void GLEngine::renderPointLightShadow()
@@ -843,6 +955,7 @@ void GLEngine::drawCubeMap() {
     view = camera.getViewMatrix();
 }
 
+
 void GLEngine::drawEnvironmentMap()
 {
     glDisable(GL_CULL_FACE);
@@ -880,6 +993,20 @@ void GLEngine::drawDisplacementToy()
     glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, toyBoxNormalTex.id);
     glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, toyBoxDisTex.id);
     glDrawArrays(GL_TRIANGLES, 0, planeMesh.vertexCount);
+    glBindVertexArray(0);
+}
+
+void GLEngine::drawLightBox()
+{
+    model = glm::mat4(1.0);
+    model = glm::translate(model, glm::vec3(50.0f, 50.0f, 0.0f));
+    model = glm::scale(model, glm::vec3(50.0f, 50.0f, 50.0f));
+    pipelines["light_box"].shader.use();
+    pipelines["light_box"].setModel(model);
+    pipelines["light_box"].shader.setVec3("lightColor", glm::vec3(50.0f, 0.0f, 50.0f));
+
+    glBindVertexArray(cubeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
     glBindVertexArray(0);
 }
 
