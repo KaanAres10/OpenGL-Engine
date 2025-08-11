@@ -39,6 +39,8 @@ public:
     // Returns texture ID for texture attachments only
     uint32_t GetTextureID(uint32_t index = 0) const;
 
+    uint32_t GetSamples() const;
+
 private:
     uint32_t m_RendererID = 0;
     FramebufferSpecification m_Specification;

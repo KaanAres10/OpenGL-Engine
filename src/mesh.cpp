@@ -26,6 +26,7 @@ void Mesh::draw(Shader& shader)
 
 		if (name == "texture_diffuse") {
 			number = std::to_string(diffuseNr++);
+			shader.setInt("diffuseMap", i);
 		}
 		else if (name == "texture_specular") {
 			number = std::to_string(specularNr++);

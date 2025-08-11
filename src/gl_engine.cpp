@@ -16,19 +16,21 @@
 #include <array>
 #include <fmt/format.h>
 #include <numeric>
+#include <sstream>
 
 const static int NR_POINT_LIGHTS = 16;
-constexpr int MAX_PL = NR_POINT_LIGHTS;
+const static int NR_POINT_SHADOW_LIGHTS = 2;
 
+constexpr int MAX_PL = NR_POINT_LIGHTS;
 static float fpsTimer = 0.0f;
 static int frameCount = 0;
 
 static int   selectedLightIdx = -1;                 
 static float gizmoSnap[3] = { 0.f, 0.f, 0.f };    
-static float exposure = 1.0f;
+static float exposure = 2.0f;
 static float block_size = 1.0f;
 
-static bool bloomEnabled = true;
+static bool bloomEnabled = false;
 static int  blurIterations = 10;  
 
 static void ShowImGuizmoTranslation(int viewportW, int viewportH,
@@ -91,6 +93,10 @@ void GLEngine::removePointLight(int idx) {
     pointLightPositions.erase(pointLightPositions.begin() + idx);
     pointLightColors.erase(pointLightColors.begin() + idx);
 }
+
+
+
+
 bool GLEngine::init(int w, int h) {
     if (SDL_Init(SDL_INIT_VIDEO)) return false;
 
@@ -155,6 +161,8 @@ bool GLEngine::init(int w, int h) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glEnable(GL_MULTISAMPLE);
+    glEnable(GL_SAMPLE_SHADING);
+    glMinSampleShading(1.0f);
     
     pipelines["light"] = GLPipeline{
         Shader("light.vert", "light.frag"),
@@ -326,7 +334,21 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["gbuffer_geom"] = GLPipeline{
+    Shader("gbuffer_geom.vert", "gbuffer_geom.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
+    };
 
+    pipelines["deferred_light"] = GLPipeline{
+    Shader("deferred_light.vert", "deferred_light.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
 
     lightMesh = glloader::loadCubeWithoutTexture();
 
@@ -435,6 +457,27 @@ bool GLEngine::init(int w, int h) {
 
     viewportW = w; viewportH = h;
 
+
+
+
+    FramebufferSpecification gSpec;
+    gSpec.Width = viewportW;
+    gSpec.Height = viewportH;
+    gSpec.Samples = 4;
+
+    gSpec.Attachments = {
+       // 0: position
+       {FramebufferAttachmentType::Texture2D, GL_RGBA16F, GL_COLOR_ATTACHMENT0},
+       // 1: normal
+       {FramebufferAttachmentType::Texture2D, GL_RGBA16F, GL_COLOR_ATTACHMENT1},
+       // 2: color&spec
+       {FramebufferAttachmentType::Texture2D, GL_RGBA8, GL_COLOR_ATTACHMENT2},
+
+       {FramebufferAttachmentType::Renderbuffer, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL_ATTACHMENT}
+    };
+
+    gBuffer = std::make_unique<Framebuffer>(gSpec);
+
     frameBufferSpec.Width = w;
     frameBufferSpec.Height = h;
     frameBufferSpec.Samples = 4;
@@ -468,10 +511,9 @@ bool GLEngine::init(int w, int h) {
     resolveSpec.Attachments = {
         {FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT0},
         {FramebufferAttachmentType::Texture2D, GL_RGBA32F, GL_COLOR_ATTACHMENT1},
+        {FramebufferAttachmentType::Renderbuffer, GL_DEPTH24_STENCIL8, GL_DEPTH_STENCIL_ATTACHMENT}
     };
     resolveFrameBuffer = std::make_unique<Framebuffer>(resolveSpec);
-
-
     
     FramebufferSpecification shadowSpec;
     shadowSpec.Width = SHADOW_WIDTH;
@@ -482,9 +524,7 @@ bool GLEngine::init(int w, int h) {
     };
     shadowFrameBuffer = std::make_unique<Framebuffer>(shadowSpec);
 
-
     depthCubemap = glloader::loadDepthCubemap(SHADOW_WIDTH, SHADOW_HEIGHT);
-
 
     depthCubemaps.reserve(pointLightPositions.size());
     shadowCubeFBOs.reserve(pointLightPositions.size());
@@ -578,6 +618,7 @@ void GLEngine::run() {
                     resolveFrameBuffer->Resize(viewportW, viewportH);
                     pingFrameBuffer->Resize(viewportW, viewportH);
                     pongFrameBuffer->Resize(viewportW, viewportH);
+                    gBuffer->Resize(viewportW, viewportH);
                 }
             }
         }
@@ -682,32 +723,19 @@ void GLEngine::run() {
     }
 }
 
-void GLEngine::processEvent(SDL_Event& e) {
-    camera.processSDLEvent(e);
-    if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_RESIZED) {
-        viewportW = e.window.data1;
-        viewportH = e.window.data2;
-        glViewport(0, 0, viewportW, viewportH);
-        sceneFrameBuffer->Resize(viewportW, viewportH);
-        resolveFrameBuffer->Resize(viewportW, viewportH);
-    }
-}
-
 void GLEngine::update(float dt) {
 
 }
 
 void GLEngine::draw() {
-    renderPointLightShadow();
-
-    renderDirectionalLightShadow();
-
-    // Draw the Actual Scene
+    // Geometry Pass
     glViewport(0, 0, viewportW, viewportH);
-    sceneFrameBuffer->Bind();
-    glEnable(GL_DEPTH_TEST);
-    glClearColor(.2f, .2f, .2f, 1);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    gBuffer->Bind();
+    const float z4[4] = { 0,0,0,0 };
+    glClearBufferfv(GL_COLOR, 0, z4);
+    glClearBufferfv(GL_COLOR, 1, z4);
+    glClearBufferfv(GL_COLOR, 2, z4);
+    glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
     model = glm::mat4(1.0f);
     view = camera.getViewMatrix();
@@ -715,60 +743,109 @@ void GLEngine::draw() {
         float(viewportW) / viewportH, 0.1f, 10000.f);
     uboMatrices->updateMember(0, proj);
     uboMatrices->updateMember(sizeof(glm::mat4), view);
+    
+    pipelines["gbuffer_geom"].apply();
+    pipelines["gbuffer_geom"].setModel(model);
+
+
+    sceneModel.draw(pipelines["gbuffer_geom"].shader);
 
 
 
-    pipelines["blinn_phong_V2"].shader.use();
-    pipelines["blinn_phong_V2"].shader.setVec3("viewPos", camera.position);
-    pipelines["blinn_phong_V2"].setModel(model);
-    pipelines["blinn_phong_V2"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+    gBuffer->Unbind();
 
-    pipelines["blinn_phong_V2"].shader.setVec3("dirLightDirection", glm::vec3(-0.840f, -0.541f, -0.035f));
-    pipelines["blinn_phong_V2"].shader.setVec3("dirLightColor", glm::vec3(1.0f));
+
+    renderPointLightShadow();
+    renderDirectionalLightShadow();
+
+    glViewport(0, 0, viewportW, viewportH);
+    sceneFrameBuffer->Bind();
+    glDisable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    pipelines["deferred_light"].shader.use();
+
+    pipelines["deferred_light"].shader.setInt("uSamples", gBuffer->GetSamples());
+    pipelines["deferred_light"].shader.setInt("gPosition", 0);
+    pipelines["deferred_light"].shader.setInt("gNormal", 1);
+    pipelines["deferred_light"].shader.setInt("gAlbedoSpec", 2);
+    pipelines["deferred_light"].shader.setInt("shadowMap", 4);
+
+    pipelines["deferred_light"].shader.setVec3("viewPos", camera.position);
+    pipelines["deferred_light"].setModel(model);
+    pipelines["deferred_light"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+    pipelines["deferred_light"].shader.setVec3("dirLightDirection", glm::vec3(-0.840f, -0.541f, -0.035f));
+    pipelines["deferred_light"].shader.setVec3("dirLightColor", glm::vec3(1.0f));
+
 
     // Shadow Cubemap binding for each point light
     int pointCount = pointLightPositions.size();
+
     std::array<GLint, MAX_PL> textureUnits;
     for (int i = 0; i < MAX_PL; i++) {
         int texUnit = 5 + i;
         textureUnits[i] = texUnit;
         glActiveTexture(GL_TEXTURE0 + texUnit);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, (i < pointCount) ? depthCubemaps[i] : depthCubemaps[0]);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, (i < pointCount) ? depthCubemaps[i] : whiteTex.id);
     }
-    glUniform1iv(glGetUniformLocation(pipelines["blinn_phong_V2"].shader.ID, "shadowCubes"),
+    glUniform1iv(glGetUniformLocation(pipelines["deferred_light"].shader.ID, "shadowCubes"),
         MAX_PL, textureUnits.data());
 
     GLfloat fars[MAX_PL];
     for (int i = 0; i < MAX_PL; i++)
         fars[i] = farPlane;
-    glUniform1fv(glGetUniformLocation(pipelines["blinn_phong_V2"].shader.ID, "far_planes"),
+    glUniform1fv(glGetUniformLocation(pipelines["deferred_light"].shader.ID, "far_planes"),
         MAX_PL, fars);
 
-    pipelines["blinn_phong_V2"].shader.setInt("uPointLightCount", pointCount);
-    for (int i = 0; i < pointCount; ++i) {
-        pipelines["blinn_phong_V2"].shader.setVec3(
+    pipelines["deferred_light"].shader.setInt("uPointLightCount", pointCount);
+    for (int i = 0; i < pointCount; i++) {
+        pipelines["deferred_light"].shader.setVec3(
             fmt::format("pointLightPositions[{}]", i),
             pointLightPositions[i]
         );
-        pipelines["blinn_phong_V2"].shader.setVec3(
+        pipelines["deferred_light"].shader.setVec3(
             fmt::format("pointLightColors[{}]", i),
             pointLightColors[i]
         );
     }
 
+    // bind G-buffer
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, gBuffer->GetTextureID(0)); // position
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, gBuffer->GetTextureID(1)); // normal
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, gBuffer->GetTextureID(2)); // albedo+spec
 
-    drawScene();
-     
+    glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, shadowFrameBuffer->GetTextureID(0));
+
+
+    // draw full-screen triangle 
+    glBindVertexArray(screenQuadMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
+    glBindVertexArray(0);
+
+
+
+
+    // Forward Shading
+    glEnable(GL_DEPTH_TEST);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer->GetRendererID());
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sceneFrameBuffer->GetRendererID());
+    glBlitFramebuffer(0, 0, viewportW, viewportH,
+        0, 0, viewportW, viewportH,
+        GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+
     drawCubeMap();
 
-    drawLightBox();
 
     sceneFrameBuffer->Unbind();
 
+
+
     // MSAA to Single Sample Framebuffer
     // Main Color
-    glBindFramebuffer(GL_READ_FRAMEBUFFER,  sceneFrameBuffer->GetRendererID()); glReadBuffer(GL_COLOR_ATTACHMENT0);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER,  resolveFrameBuffer->GetRendererID()); glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFrameBuffer->GetRendererID()); glReadBuffer(GL_COLOR_ATTACHMENT0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolveFrameBuffer->GetRendererID()); glDrawBuffer(GL_COLOR_ATTACHMENT0);
     glBlitFramebuffer(
         0, 0, viewportW, viewportH,
         0, 0, viewportW, viewportH,
@@ -791,7 +868,7 @@ void GLEngine::draw() {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
 
     blurBloom();
-    
+
     // Draw Screen Quad 
     glViewport(0, 0, viewportW, viewportH);
     glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
@@ -811,6 +888,7 @@ void GLEngine::draw() {
 
     glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
     glBindVertexArray(0);
+
 }
 
 void GLEngine::blurBloom()
@@ -861,9 +939,12 @@ void GLEngine::blurBloom()
 
 void GLEngine::renderPointLightShadow()
 {
+    const int K = std::min<int>(NR_POINT_SHADOW_LIGHTS, pointLightPositions.size());
+    if (K == 0) return;
+
     float aspect = float(SHADOW_WIDTH) / float(SHADOW_HEIGHT);
     glm::mat4 shadowProj = glm::perspective(glm::radians(90.0f), aspect, nearPlane, farPlane);
-    for (int i = 0; i < (int)pointLightPositions.size(); ++i) {
+    for (int i = 0; i < K; i++) {
         shadowCubeFBOs[i]->Bind();
         glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
         glClear(GL_DEPTH_BUFFER_BIT);
@@ -894,7 +975,7 @@ void GLEngine::renderPointLightShadow()
 void GLEngine::renderDirectionalLightShadow()
 {
     static float l = -1000.0f, r = 1000.0f, b = -1000.0f, t = 1000.0f, n = 0.01f, f = 4000.0f;
-    if (enableImgui)
+   /* if (enableImgui)
     {
         ImGui::Begin("Shadow Frustum");
         ImGui::DragFloat("Left", &l, 1.0f, -5000.0f, 5000.0f);
@@ -915,7 +996,7 @@ void GLEngine::renderDirectionalLightShadow()
         ImGui::DragFloat3("Camera Direction", glm::value_ptr(camera.front), 0.1f, -1000.0f, 1000.0f);
 
         ImGui::End();
-    }
+    }*/
    
 
     glm::mat4 lightProj = glm::ortho(l, r, b, t, n, f);
@@ -937,8 +1018,6 @@ void GLEngine::renderDirectionalLightShadow()
     shadowFrameBuffer->Unbind();
 }
 
-
-
 void GLEngine::drawCubeMap() {
     view = glm::mat4(glm::mat3(view));
     glDepthMask(GL_FALSE);
@@ -946,15 +1025,16 @@ void GLEngine::drawCubeMap() {
     pipelines["cubemap"].shader.use();
     pipelines["cubemap"].setView(view);
     pipelines["cubemap"].setProj(proj);
+    pipelines["cubemap"].shader.setInt("skybox", 0);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMapTex.id);
+
     glBindVertexArray(skyBoxMesh.vao);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMapTex.id);
-    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
+    glDrawArrays(GL_TRIANGLES, 0, skyBoxMesh.vertexCount);
     glBindVertexArray(0);
     glDepthMask(GL_TRUE);
     glDepthFunc(GL_LESS);
     view = camera.getViewMatrix();
 }
-
 
 void GLEngine::drawEnvironmentMap()
 {
@@ -996,20 +1076,23 @@ void GLEngine::drawDisplacementToy()
     glBindVertexArray(0);
 }
 
-void GLEngine::drawLightBox()
+void GLEngine::drawLightBoxes()
 {
-    model = glm::mat4(1.0);
-    model = glm::translate(model, glm::vec3(50.0f, 50.0f, 0.0f));
-    model = glm::scale(model, glm::vec3(50.0f, 50.0f, 50.0f));
-    pipelines["light_box"].shader.use();
-    pipelines["light_box"].setModel(model);
-    pipelines["light_box"].shader.setVec3("lightColor", glm::vec3(50.0f, 0.0f, 50.0f));
+    for (int i = 0; i < pointLightColors.size(); i++)
+    {
 
-    glBindVertexArray(cubeMesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
-    glBindVertexArray(0);
+        model = glm::mat4(1.0);
+        model = glm::translate(model, pointLightPositions[i]);
+        model = glm::scale(model, glm::vec3(20.0f, 20.0f, 20.0f));
+        pipelines["light_box"].shader.use();
+        pipelines["light_box"].setModel(model);
+        pipelines["light_box"].shader.setVec3("lightColor", 5.0f * pointLightColors[i]);
+
+        glBindVertexArray(cubeMesh.vao);
+        glDrawArrays(GL_TRIANGLES, 0, cubeMesh.vertexCount);
+        glBindVertexArray(0);
+    }
 }
-
 
 void GLEngine::drawPointLights()
 {

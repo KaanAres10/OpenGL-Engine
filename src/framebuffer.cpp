@@ -201,3 +201,7 @@ uint32_t Framebuffer::GetTextureID(uint32_t index) const
         return m_TextureIDs[index];
     return 0;
 }
+
+uint32_t Framebuffer::GetSamples() const {
+    return m_Specification.Samples;
+}

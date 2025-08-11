@@ -49,6 +49,8 @@ private:
 	GLMesh        pointsMesh;
 	GLMesh        quadInstancingMesh;
 	GLMesh        floorMesh;
+	GLMesh        sphereMesh;
+
 
 
 	bool enableImgui = true;
@@ -73,6 +75,7 @@ private:
 
 	Model sceneModel;
 	Model plantModel;
+	Model backpackModel;
 
 	vector<glm::vec3> vegetation;
 
@@ -81,6 +84,7 @@ private:
 	std::unique_ptr<Framebuffer> resolveFrameBuffer;
 	std::unique_ptr<Framebuffer> pingFrameBuffer;
 	std::unique_ptr<Framebuffer> pongFrameBuffer;
+	std::unique_ptr<Framebuffer> gBuffer;
 
 	static constexpr GLuint SHADOW_WIDTH = 2048;
 	static constexpr GLuint SHADOW_HEIGHT = 2048;
@@ -98,7 +102,6 @@ private:
 	glm::mat4 view;
 	glm::mat4 proj;
 
-	void processEvent(SDL_Event&);
 	void update(float dt);
 	void draw();
 
@@ -114,7 +117,7 @@ private:
 
 	void drawDisplacementToy();
 
-	void drawLightBox();
+	void drawLightBoxes();
 
 	void drawPointLights();
 
