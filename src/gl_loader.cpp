@@ -2,6 +2,7 @@
 #include "stb_image.h"
 #include "gl_loader.h"
 #include <stdexcept>
+#include <random>
 
 GLMeshBuffers glloader::loadMesh(const std::string& path)
 {
@@ -829,4 +830,55 @@ GLMesh glloader::loadCubeWithTexture_Normal() {
     glBindVertexArray(0);
     m.vertexCount = 36;
     return m;
+}
+
+std::vector<glm::vec3> glloader::makeSSAOKernel(int K, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> U01(0.0f, 1.0f);
+
+    std::vector<glm::vec3> kernel;
+    kernel.reserve(K);
+
+    for (int i = 0; i < K; ++i) {
+        glm::vec3 s(
+            U01(rng) * 2.0f - 1.0f, // x in [-1,1]
+            U01(rng) * 2.0f - 1.0f, // y in [-1,1]
+            U01(rng)               // z in [0,1]
+        );
+        s = glm::normalize(s);
+
+        float r = U01(rng);                
+        float t = float(i) / float(K);     
+        float scale = 0.1f + 0.9f * (t * t); 
+        s *= (r * r) * scale;
+
+        kernel.push_back(s);
+    }
+    return kernel;
+}
+
+
+GLTexture glloader::createSSAONoiseTexture(int side, unsigned seed) {
+    GLTexture tex{};
+    tex.width = side;
+    tex.height = side;
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> U(-1.0f, 1.0f);
+
+    std::vector<glm::vec3> noise(side * side);
+    for (auto& v : noise) v = glm::vec3(U(rng), U(rng), 0.0f); 
+
+    glGenTextures(1, &tex.id);
+    glBindTexture(GL_TEXTURE_2D, tex.id);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, side, side,
+        0, GL_RGB, GL_FLOAT, noise.data());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); 
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    return tex;
 }

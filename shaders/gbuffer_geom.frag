@@ -26,10 +26,10 @@ void main() {
     vec3 N = hasNormalMap ? normalize(fs_in.TBN * (texture(normalMap, fs_in.texCoords).rgb * 2.0 - 1.0)) 
                             : normalize(fs_in.normal);
 
-    float specStrength = hasSpecularMap ? texture(specularMap, fs_in.texCoords).r: 1.0;
+    float specStrength = hasSpecularMap ? texture(specularMap, fs_in.texCoords).a: 1.0;
 
     gPosition = fs_in.fragPos;
     gNormal = N;
     gAlbedoSpec.rgb = albedo.rgb;
-    gAlbedoSpec.a = albedo.a;
+    gAlbedoSpec.a = specStrength;
 }

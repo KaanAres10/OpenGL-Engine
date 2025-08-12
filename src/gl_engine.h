@@ -59,9 +59,13 @@ private:
 		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex, brickWallTex, brickWallNormalTex, brickWallDisplacementTex, 
 		toyBoxTex, toyBoxNormalTex, toyBoxDisTex, blackTex;
 
+	GLTexture depthCubemap;
+
+	GLTexture ssaoNoiseTex;
+
+
 	GLuint blurredBloomTex;
 
-	GLTexture depthCubemap;
 
 	std::vector<GLuint> depthCubemaps;
 	std::vector<std::unique_ptr<Framebuffer>> shadowCubeFBOs;
@@ -85,6 +89,15 @@ private:
 	std::unique_ptr<Framebuffer> pingFrameBuffer;
 	std::unique_ptr<Framebuffer> pongFrameBuffer;
 	std::unique_ptr<Framebuffer> gBuffer;
+	std::unique_ptr<Framebuffer> ssaoFrameBuffer;
+	std::unique_ptr<Framebuffer> ssaoBlurFrameBuffer;
+	
+
+	std::vector<glm::vec3> ssaoKernel;
+	int   ssaoKernelSize = 64;
+	float ssaoRadius = 0.75f;
+	float ssaoBias = 0.025f;
+	bool  ssaoEnabled = true;
 
 	static constexpr GLuint SHADOW_WIDTH = 2048;
 	static constexpr GLuint SHADOW_HEIGHT = 2048;
@@ -105,11 +118,19 @@ private:
 	void update(float dt);
 	void draw();
 
+	void ambientOcclussion();
+
+	void geometryPass();
+
+	void lightPass();
+
 	void blurBloom();
 
-	void renderPointLightShadow();
+	void postProcess();
 
-	void renderDirectionalLightShadow();
+	void pointLightShadow();
+
+	void directionalLightShadow();
 
 	void drawCubeMap();
 

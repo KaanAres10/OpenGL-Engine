@@ -1,5 +1,27 @@
 #include "Framebuffer.h"
 
+static void PickFormatAndType(GLenum internal, GLenum& format, GLenum& type)
+{
+    switch (internal) {
+    case GL_R8:         format = GL_RED;  type = GL_UNSIGNED_BYTE; break;
+    case GL_RG8:        format = GL_RG;   type = GL_UNSIGNED_BYTE; break;
+    case GL_RGB8:       format = GL_RGB;  type = GL_UNSIGNED_BYTE; break;
+    case GL_RGBA8:      format = GL_RGBA; type = GL_UNSIGNED_BYTE; break;
+
+    case GL_R16F:       format = GL_RED;  type = GL_HALF_FLOAT;    break;
+    case GL_RG16F:      format = GL_RG;   type = GL_HALF_FLOAT;    break;
+    case GL_RGB16F:     format = GL_RGB;  type = GL_HALF_FLOAT;    break;
+    case GL_RGBA16F:    format = GL_RGBA; type = GL_HALF_FLOAT;    break;
+
+    case GL_R32F:       format = GL_RED;  type = GL_FLOAT;         break;
+    case GL_RG32F:      format = GL_RG;   type = GL_FLOAT;         break;
+    case GL_RGB32F:     format = GL_RGB;  type = GL_FLOAT;         break;
+    case GL_RGBA32F:    format = GL_RGBA; type = GL_FLOAT;         break;
+
+    default:            format = GL_RGBA; type = GL_UNSIGNED_BYTE; break;
+    }
+}
+
 Framebuffer::Framebuffer(const FramebufferSpecification& spec)
     : m_Specification(spec)
 {
@@ -77,15 +99,24 @@ void Framebuffer::Invalidate()
                     // Regular texture
                     glGenTextures(1, &m_TextureIDs[i]);
                     glBindTexture(GL_TEXTURE_2D, m_TextureIDs[i]);
-                    GLenum internalFormat = att.InternalFormat;
-                    GLenum format = (internalFormat == GL_RGB8 ? GL_RGB :
-                        internalFormat == GL_RGBA8 ? GL_RGBA : GL_RGBA);
-                    GLenum type = (internalFormat == GL_RGB16F || internalFormat == GL_RGBA16F ? GL_FLOAT : GL_UNSIGNED_BYTE);
-                    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat,
+                    
+                    GLenum format, type;
+                    PickFormatAndType(att.InternalFormat, format, type);
+
+                    glTexImage2D(GL_TEXTURE_2D, 0, att.InternalFormat,
                         m_Specification.Width, m_Specification.Height,
                         0, format, type, nullptr);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+
+                    if (att.InternalFormat == GL_R8) { 
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                    }
+                    else {
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    }
+
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                     glFramebufferTexture2D(GL_FRAMEBUFFER,

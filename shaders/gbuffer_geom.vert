@@ -20,14 +20,16 @@ out VS_OUT {
 uniform mat4 model;
 
 void main() {
-    vec3 T = normalize(vec3(model * vec4(aTangent, 0.0)));
-    vec3 N = normalize(mat3(transpose(inverse(model))) * aNormal);
+    mat4 modelView = view * model;
+
+    vec3 T = normalize(mat3(modelView) * aTangent);
+    vec3 N = normalize(mat3(transpose(inverse(modelView))) * aNormal);
     T = normalize(T - dot(T, N) * N);
     vec3 B = cross(N, T);
 
-    gl_Position = projection * view * model * vec4(aPos, 1.0);
-    vs_out.fragPos = vec3(model * vec4(aPos, 1.0));
-    vs_out.normal = mat3(transpose(inverse(model))) * aNormal;
+    gl_Position = projection * modelView * vec4(aPos, 1.0);
+    vs_out.fragPos = (modelView * vec4(aPos, 1.0)).xyz;
+    vs_out.normal = N;
     vs_out.TBN = mat3(T, B, N);
     vs_out.texCoords = aTexCoords;
 }

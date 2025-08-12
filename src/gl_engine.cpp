@@ -33,6 +33,9 @@ static float block_size = 1.0f;
 static bool bloomEnabled = false;
 static int  blurIterations = 10;  
 
+constexpr unsigned KERNEL_SEED = 1337u;
+constexpr unsigned NOISE_SEED = 42u;
+
 static void ShowImGuizmoTranslation(int viewportW, int viewportH,
     const Camera& cam,
     glm::vec3& position)
@@ -350,6 +353,22 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["ssao"] = GLPipeline{
+    Shader("ssao.vert", "ssao.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
+
+    pipelines["ssao_blur"] = GLPipeline{
+    Shader("ssao_blur.vert", "ssao_blur.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
+
     lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
@@ -554,6 +573,23 @@ bool GLEngine::init(int w, int h) {
         shadowCubeFBOs.push_back(std::move(fbo));
     }
 
+    FramebufferSpecification ssaoSpec;
+    ssaoSpec.Width = viewportW;
+    ssaoSpec.Height = viewportH;
+    ssaoSpec.Samples = 1;
+    ssaoSpec.Attachments = {
+        { FramebufferAttachmentType::Texture2D, GL_R8, GL_COLOR_ATTACHMENT0 }
+    };
+    ssaoFrameBuffer = std::make_unique<Framebuffer>(ssaoSpec);
+
+    FramebufferSpecification ssaoBlurSpec = ssaoSpec;
+    ssaoBlurFrameBuffer = std::make_unique<Framebuffer>(ssaoBlurSpec);
+
+
+
+    ssaoKernel = glloader::makeSSAOKernel(ssaoKernelSize, KERNEL_SEED); 
+    ssaoNoiseTex = glloader::createSSAONoiseTexture(4, NOISE_SEED);
+
     uboMatrices = std::make_unique<UniformBuffer<Matrices>>(0, GL_DYNAMIC_DRAW);
 
     lightCamera.position = glm::vec3(-2.0f, 4.0f, -1.0f);
@@ -619,6 +655,8 @@ void GLEngine::run() {
                     pingFrameBuffer->Resize(viewportW, viewportH);
                     pongFrameBuffer->Resize(viewportW, viewportH);
                     gBuffer->Resize(viewportW, viewportH);
+                    ssaoFrameBuffer->Resize(viewportW, viewportH);
+                    ssaoBlurFrameBuffer->Resize(viewportW, viewportH);
                 }
             }
         }
@@ -693,12 +731,10 @@ void GLEngine::run() {
             ImGui::DragFloat("Exposure Level", &exposure, 0.1f, 0.0f, 10.0f);
             ImGui::DragFloat("Block Size", &block_size, 1.0f, 1.0f, 20.0f);
             ImGui::Checkbox("Bloom Enabled", &bloomEnabled);
+            ImGui::Checkbox("SSAO Enabled", &ssaoEnabled);
 
             ImGui::End();
         }
-
-
-        
 
         uboMatrices->updateMember(0, proj);
         uboMatrices->updateMember(sizeof(glm::mat4), view);
@@ -728,7 +764,66 @@ void GLEngine::update(float dt) {
 }
 
 void GLEngine::draw() {
-    // Geometry Pass
+
+    geometryPass();
+
+    ambientOcclussion();
+
+    pointLightShadow();
+
+    directionalLightShadow();
+
+    sceneFrameBuffer->Bind();
+
+    lightPass();
+
+    // Forward Shading
+    glEnable(GL_DEPTH_TEST);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer->GetRendererID());
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sceneFrameBuffer->GetRendererID());
+    glBlitFramebuffer(0, 0, viewportW, viewportH,
+        0, 0, viewportW, viewportH,
+        GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+
+    drawCubeMap();
+
+    drawSceneNormal();
+
+    sceneFrameBuffer->Unbind();
+
+    /*MSAA to Single Sample Framebuffer*/
+
+    // Main Color
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFrameBuffer->GetRendererID()); glReadBuffer(GL_COLOR_ATTACHMENT0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolveFrameBuffer->GetRendererID()); glDrawBuffer(GL_COLOR_ATTACHMENT0);
+    glBlitFramebuffer(
+        0, 0, viewportW, viewportH,
+        0, 0, viewportW, viewportH,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST
+    );
+
+    // Bright Color
+    glReadBuffer(GL_COLOR_ATTACHMENT1);
+    glDrawBuffer(GL_COLOR_ATTACHMENT1);
+    glBlitFramebuffer(
+        0, 0, viewportW, viewportH,
+        0, 0, viewportW, viewportH,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST
+    );
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+    blurBloom();
+  
+    postProcess();
+}
+
+
+void GLEngine::geometryPass()
+{
     glViewport(0, 0, viewportW, viewportH);
     gBuffer->Bind();
     const float z4[4] = { 0,0,0,0 };
@@ -743,23 +838,72 @@ void GLEngine::draw() {
         float(viewportW) / viewportH, 0.1f, 10000.f);
     uboMatrices->updateMember(0, proj);
     uboMatrices->updateMember(sizeof(glm::mat4), view);
-    
+
     pipelines["gbuffer_geom"].apply();
     pipelines["gbuffer_geom"].setModel(model);
 
-
     sceneModel.draw(pipelines["gbuffer_geom"].shader);
 
-
-
     gBuffer->Unbind();
+}
 
-
-    renderPointLightShadow();
-    renderDirectionalLightShadow();
-
+void GLEngine::ambientOcclussion()
+{
+    ssaoFrameBuffer->Bind();
     glViewport(0, 0, viewportW, viewportH);
-    sceneFrameBuffer->Bind();
+    glDisable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    pipelines["ssao"].shader.use();
+
+    pipelines["ssao"].shader.setInt("gPositionMS", 0);
+    pipelines["ssao"].shader.setInt("gNormalMS", 1);
+    pipelines["ssao"].shader.setInt("texNoise", 2);
+    pipelines["ssao"].shader.setInt("kernelSize", ssaoKernelSize);
+    pipelines["ssao"].shader.setFloat("radius", ssaoRadius);
+    pipelines["ssao"].shader.setFloat("bias", ssaoBias);
+    pipelines["ssao"].shader.setVec2("noiseScale", { viewportW / 4.0f, viewportH / 4.0f });
+    pipelines["ssao"].shader.setVec2("screenSize", { viewportW, viewportH });
+    pipelines["ssao"].shader.setInt("uSamples", gBuffer->GetSamples());
+    pipelines["ssao"].shader.setMat4("projection", proj);
+
+    // upload kernel
+    for (int i = 0; i < ssaoKernelSize; ++i)
+        pipelines["ssao"].shader.setVec3(("samples[" + std::to_string(i) + "]").c_str(), ssaoKernel[i]);
+
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, gBuffer->GetTextureID(0));
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, gBuffer->GetTextureID(1));
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, ssaoNoiseTex.id);
+
+    glBindVertexArray(screenQuadMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
+    glBindVertexArray(0);
+
+    ssaoFrameBuffer->Unbind();
+
+
+
+    ssaoBlurFrameBuffer->Bind();
+    glViewport(0, 0, viewportW, viewportH);
+    glDisable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    pipelines["ssao_blur"].shader.use();
+    pipelines["ssao_blur"].shader.setInt("ssaoInput", 0);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, ssaoFrameBuffer->GetTextureID(0));
+
+    glBindVertexArray(screenQuadMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
+    glBindVertexArray(0);
+
+    ssaoBlurFrameBuffer->Unbind();
+}
+
+void GLEngine::lightPass()
+{
+    glViewport(0, 0, viewportW, viewportH);
     glDisable(GL_DEPTH_TEST);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -769,11 +913,19 @@ void GLEngine::draw() {
     pipelines["deferred_light"].shader.setInt("gPosition", 0);
     pipelines["deferred_light"].shader.setInt("gNormal", 1);
     pipelines["deferred_light"].shader.setInt("gAlbedoSpec", 2);
+    pipelines["deferred_light"].shader.setInt("ssaoTex", 3);
+    pipelines["deferred_light"].shader.setInt("ssaoEnabled", ssaoEnabled ? 1 : 0);
     pipelines["deferred_light"].shader.setInt("shadowMap", 4);
 
     pipelines["deferred_light"].shader.setVec3("viewPos", camera.position);
     pipelines["deferred_light"].setModel(model);
     pipelines["deferred_light"].shader.setMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+
+    glm::mat4 view = camera.getViewMatrix();
+    glm::mat4 invView = glm::inverse(view);
+
+    pipelines["deferred_light"].shader.setMat4("invView", invView);
 
     pipelines["deferred_light"].shader.setVec3("dirLightDirection", glm::vec3(-0.840f, -0.541f, -0.035f));
     pipelines["deferred_light"].shader.setVec3("dirLightColor", glm::vec3(1.0f));
@@ -815,6 +967,8 @@ void GLEngine::draw() {
     glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, gBuffer->GetTextureID(1)); // normal
     glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, gBuffer->GetTextureID(2)); // albedo+spec
 
+    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, ssaoBlurFrameBuffer->GetTextureID(0));
+
     glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, shadowFrameBuffer->GetTextureID(0));
 
 
@@ -822,73 +976,6 @@ void GLEngine::draw() {
     glBindVertexArray(screenQuadMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
     glBindVertexArray(0);
-
-
-
-
-    // Forward Shading
-    glEnable(GL_DEPTH_TEST);
-
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer->GetRendererID());
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sceneFrameBuffer->GetRendererID());
-    glBlitFramebuffer(0, 0, viewportW, viewportH,
-        0, 0, viewportW, viewportH,
-        GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-
-    drawCubeMap();
-
-
-    sceneFrameBuffer->Unbind();
-
-
-
-    // MSAA to Single Sample Framebuffer
-    // Main Color
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFrameBuffer->GetRendererID()); glReadBuffer(GL_COLOR_ATTACHMENT0);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, resolveFrameBuffer->GetRendererID()); glDrawBuffer(GL_COLOR_ATTACHMENT0);
-    glBlitFramebuffer(
-        0, 0, viewportW, viewportH,
-        0, 0, viewportW, viewportH,
-        GL_COLOR_BUFFER_BIT,
-        GL_NEAREST
-    );
-
-
-    // Bright Color
-    glReadBuffer(GL_COLOR_ATTACHMENT1);
-    glDrawBuffer(GL_COLOR_ATTACHMENT1);
-    glBlitFramebuffer(
-        0, 0, viewportW, viewportH,
-        0, 0, viewportW, viewportH,
-        GL_COLOR_BUFFER_BIT,
-        GL_NEAREST
-    );
-
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-
-    blurBloom();
-
-    // Draw Screen Quad 
-    glViewport(0, 0, viewportW, viewportH);
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    pipelines["framebuffer"].apply();
-    pipelines["framebuffer"].shader.setInt("screenTexture", 0);
-    pipelines["framebuffer"].shader.setInt("bloomTexture", 1);
-
-    pipelines["framebuffer"].shader.setFloat("exposure", exposure);
-    pipelines["framebuffer"].shader.setFloat("block_size", block_size);
-
-
-    glBindVertexArray(screenQuadMesh.vao);
-    glDisable(GL_DEPTH_TEST);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, resolveFrameBuffer->GetTextureID(0));
-    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, blurredBloomTex);
-
-    glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
-    glBindVertexArray(0);
-
 }
 
 void GLEngine::blurBloom()
@@ -937,7 +1024,29 @@ void GLEngine::blurBloom()
     }
 }
 
-void GLEngine::renderPointLightShadow()
+void GLEngine::postProcess()
+{
+    glViewport(0, 0, viewportW, viewportH);
+    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    pipelines["framebuffer"].apply();
+    pipelines["framebuffer"].shader.setInt("screenTexture", 0);
+    pipelines["framebuffer"].shader.setInt("bloomTexture", 1);
+
+    pipelines["framebuffer"].shader.setFloat("exposure", exposure);
+    pipelines["framebuffer"].shader.setFloat("block_size", block_size);
+
+
+    glBindVertexArray(screenQuadMesh.vao);
+    glDisable(GL_DEPTH_TEST);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, resolveFrameBuffer->GetTextureID(0));
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, blurredBloomTex);
+
+    glDrawArrays(GL_TRIANGLES, 0, screenQuadMesh.vertexCount);
+    glBindVertexArray(0);
+}
+
+void GLEngine::pointLightShadow()
 {
     const int K = std::min<int>(NR_POINT_SHADOW_LIGHTS, pointLightPositions.size());
     if (K == 0) return;
@@ -972,7 +1081,7 @@ void GLEngine::renderPointLightShadow()
     }
 }
 
-void GLEngine::renderDirectionalLightShadow()
+void GLEngine::directionalLightShadow()
 {
     static float l = -1000.0f, r = 1000.0f, b = -1000.0f, t = 1000.0f, n = 0.01f, f = 4000.0f;
    /* if (enableImgui)

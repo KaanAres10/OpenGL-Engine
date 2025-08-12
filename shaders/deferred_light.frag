@@ -29,6 +29,10 @@ uniform int           uPointLightCount;
 const float ambientStrength = 0.1;
 const float shininess       = 64.0;
 
+uniform sampler2D ssaoTex;
+uniform int ssaoEnabled;
+
+uniform mat4 invView;
 
 
 float CalcDirShadow(vec3 fragPos, vec3 N)
@@ -105,9 +109,9 @@ vec3 BlinnPhong(vec3 N, vec3 V, vec3 L, vec3 lightCol, float specStrength) {
     return diffuse + specular;
 }
 
-vec3 CalcDirLight(vec3 N, vec3 V, float shadow, float specStrength) {
+vec3 CalcDirLight(vec3 N, vec3 V, float shadow, float specStrength, float ambientOcclusion) {
     vec3 L     = normalize(-dirLightDirection);
-    vec3 ambient = ambientStrength * dirLightColor;
+    vec3 ambient = ambientStrength  * ambientOcclusion * dirLightColor;
     vec3 phong   = BlinnPhong(N, V, L, dirLightColor, specStrength);
 
     return ambient + (1 - shadow) * phong;
@@ -125,6 +129,10 @@ vec3 CalcPointLight(vec3 N, vec3 V, vec3 P, vec3 lightPos, vec3 lightCol, float 
 void main() {
     ivec2 ip = ivec2(gl_FragCoord.xy);
 
+
+    float ambientOcclusion = ssaoEnabled != 0 ? texture(ssaoTex, texCoords).r : 1.0;
+    ambientOcclusion = clamp(ambientOcclusion, 0.0, 1.0);
+
     vec3 accum = vec3(0.0);
     float brightAccum = 0.0;
     int covered = 0;
@@ -139,18 +147,22 @@ void main() {
         if (dot(N, N) <= 1e-8) continue;   
         N = normalize(N);
 
+
+        vec3 worldPos = (invView * vec4(fragPos, 1.0)).xyz;
+        vec3 Nworld   = normalize(mat3(invView) * N);
+
         vec4 albedoSpec = texelFetch(gAlbedoSpec, ip, s);
 
         vec3 albedo = albedoSpec.rgb;
 
         float specularStrength = albedoSpec.a;
 
-        vec3 V = normalize(viewPos - fragPos);
+        vec3 V = normalize(viewPos - worldPos);
 
-        float shadow = CalcDirShadow(fragPos, N);
+        float shadow = CalcDirShadow(worldPos, N);
         float ptFill = 0.0;
         for(int i = 0; i < uPointLightCount; i++) {
-            float d = length(pointLightPositions[i] - fragPos);
+            float d = length(pointLightPositions[i] - worldPos);
             float att = 1.0 / (1.0 + 0.0000198 * d + 0.0005 * d * d);
             ptFill += att;
         }
@@ -159,17 +171,17 @@ void main() {
         shadow = mix(shadow, 0.0, ptFill);
 
 
-        vec3 lighting = CalcDirLight(N, V, shadow, specularStrength);
+        vec3 lighting = CalcDirLight(Nworld, V, shadow, specularStrength, ambientOcclusion);
 
 
         int countOfPointShadow = 0;
         for (int i = 0; i < uPointLightCount; i++) {
             float ptShadow = 0;
             if (countOfPointShadow < NR_POINT_SHADOW_LIGHTS) {
-                ptShadow = CalcPointShadow(i, fragPos);
+                ptShadow = CalcPointShadow(i, worldPos);
                 countOfPointShadow++;
             }
-            vec3 ptLight  = CalcPointLight(N, V, fragPos,
+            vec3 ptLight  = CalcPointLight(Nworld, V, worldPos,
                                        pointLightPositions[i],
                                        pointLightColors[i], specularStrength);
             
