@@ -20,6 +20,7 @@ namespace glloader {
 	GLMesh loadCubeWithoutTexture();
 	GLMesh loadCubeWithNormal();
 	GLMesh loadCubeWithTexture_Normal();
+	GLMeshBuffers loadSphere(unsigned X_SEGMENTS, unsigned Y_SEGMENTS);
 	std::vector<glm::vec3> makeSSAOKernel(int K, unsigned seed);
 	GLTexture createSSAONoiseTexture(int side, unsigned seed);
 }

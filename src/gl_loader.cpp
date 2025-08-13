@@ -832,6 +832,105 @@ GLMesh glloader::loadCubeWithTexture_Normal() {
     return m;
 }
 
+GLMeshBuffers glloader::loadSphere(unsigned X_SEGMENTS, unsigned Y_SEGMENTS)
+{
+    GLMeshBuffers m{};
+    glGenVertexArrays(1, &m.vao);
+    glGenBuffers(1, &m.vbo);
+    glGenBuffers(1, &m.ebo);
+
+    std::vector<glm::vec3> positions;
+    std::vector<glm::vec3> normals;
+    std::vector<glm::vec2> uvs;
+    std::vector<unsigned int> indices;
+
+    positions.reserve((X_SEGMENTS + 1) * (Y_SEGMENTS + 1));
+    normals.reserve(positions.capacity());
+    uvs.reserve(positions.capacity());
+    indices.reserve(Y_SEGMENTS * (X_SEGMENTS + 1) * 2);
+
+    const float PI = 3.14159265359f;
+
+    for (unsigned y = 0; y <= Y_SEGMENTS; ++y) {
+        float v = float(y) / float(Y_SEGMENTS);
+        float phi = v * PI;
+        float cosPhi = std::cos(phi);
+        float sinPhi = std::sin(phi);
+
+        for (unsigned x = 0; x <= X_SEGMENTS; ++x) {
+            float u = float(x) / float(X_SEGMENTS);
+            float theta = u * 2.0f * PI;
+            float cosTheta = std::cos(theta);
+            float sinTheta = std::sin(theta);
+
+            float xPos = cosTheta * sinPhi;
+            float yPos = cosPhi;
+            float zPos = sinTheta * sinPhi;
+
+            positions.emplace_back(xPos, yPos, zPos);
+            normals.emplace_back(xPos, yPos, zPos);     // unit sphere
+            uvs.emplace_back(u, v);
+        }
+    }
+
+    bool oddRow = false;
+    for (unsigned y = 0; y < Y_SEGMENTS; ++y) {
+        if (!oddRow) {
+            for (unsigned x = 0; x <= X_SEGMENTS; ++x) {
+                indices.push_back(y * (X_SEGMENTS + 1) + x);
+                indices.push_back((y + 1) * (X_SEGMENTS + 1) + x);
+            }
+        }
+        else {
+            for (int x = int(X_SEGMENTS); x >= 0; --x) {
+                indices.push_back((y + 1) * (X_SEGMENTS + 1) + unsigned(x));
+                indices.push_back(y * (X_SEGMENTS + 1) + unsigned(x));
+            }
+        }
+        oddRow = !oddRow;
+    }
+    m.indexCount = indices.size();
+
+    std::vector<float> interleaved;
+    interleaved.reserve(positions.size() * 8);
+    for (size_t i = 0; i < positions.size(); ++i) {
+        interleaved.push_back(positions[i].x);
+        interleaved.push_back(positions[i].y);
+        interleaved.push_back(positions[i].z);
+        interleaved.push_back(normals[i].x);
+        interleaved.push_back(normals[i].y);
+        interleaved.push_back(normals[i].z);
+        interleaved.push_back(uvs[i].x);
+        interleaved.push_back(uvs[i].y);
+    }
+
+    glBindVertexArray(m.vao);
+
+    glBindBuffer(GL_ARRAY_BUFFER, m.vbo);
+    glBufferData(GL_ARRAY_BUFFER,
+        interleaved.size() * sizeof(float),
+        interleaved.data(),
+        GL_STATIC_DRAW);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m.ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+        indices.size() * sizeof(unsigned int),
+        indices.data(),
+        GL_STATIC_DRAW);
+
+    const GLsizei stride = 8 * sizeof(float);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, stride, (void*)(6 * sizeof(float)));
+
+    glBindVertexArray(0);
+    return m;
+}
+
 std::vector<glm::vec3> glloader::makeSSAOKernel(int K, unsigned seed) {
     std::mt19937 rng(seed);
     std::uniform_real_distribution<float> U01(0.0f, 1.0f);
@@ -882,3 +981,4 @@ GLTexture glloader::createSSAONoiseTexture(int side, unsigned seed) {
 
     return tex;
 }
+

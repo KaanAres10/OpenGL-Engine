@@ -369,6 +369,22 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["pbr"] = GLPipeline{
+    Shader("pbr.vert", "pbr.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
+
+    pipelines["pbr_textured"] = GLPipeline{
+    Shader("pbr_textured.vert", "pbr_textured.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
+
     lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
@@ -391,6 +407,8 @@ bool GLEngine::init(int w, int h) {
 
     floorMesh = glloader::loadPlaneWithTexture_Normal();
 
+    sphereMesh = glloader::loadSphere(64, 64);
+
     containerTex = glloader::loadTexture("assets/textures/container.png", true);
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
     grassTex = glloader::loadTexture("assets/textures/grass.png", true);
@@ -412,6 +430,13 @@ bool GLEngine::init(int w, int h) {
     toyBoxNormalTex = glloader::loadTexture("assets/textures/wooden_toy/toy_box_normal.png", true);
     toyBoxDisTex = glloader::loadTexture("assets/textures/wooden_toy/toy_box_disp.png", true);
     blackTex = glloader::loadTexture("assets/textures/black.jpg", true);
+
+    rustedIronAlbedoTex = glloader::loadTexture("assets/textures/pbr/rustediron/rustediron_albedo.png", true);
+    rustedIronNormalTex = glloader::loadTexture("assets/textures/pbr/rustediron/rustediron_normal.png");
+    rustedIronRoughnessTex = glloader::loadTexture("assets/textures/pbr/rustediron/rustediron_roughness.png");
+    rustedIronMetallicTex = glloader::loadTexture("assets/textures/pbr/rustediron/rustediron_metallic.png");
+    rustedIronAOTex = glloader::loadTexture("assets/textures/pbr/rustediron/rustediron_ao.png");
+
 
 
 
@@ -764,6 +789,12 @@ void GLEngine::update(float dt) {
 }
 
 void GLEngine::draw() {
+    model = glm::mat4(1.0f);
+    view = camera.getViewMatrix();
+    proj = glm::perspective(glm::radians(75.f),
+        float(viewportW) / viewportH, 0.1f, 10000.f);
+    uboMatrices->updateMember(0, proj);
+    uboMatrices->updateMember(sizeof(glm::mat4), view);
 
     geometryPass();
 
@@ -774,7 +805,9 @@ void GLEngine::draw() {
     directionalLightShadow();
 
     sceneFrameBuffer->Bind();
-
+    glViewport(0, 0, viewportW, viewportH);
+    glDisable(GL_DEPTH_TEST);
+    glClear(GL_COLOR_BUFFER_BIT);
     lightPass();
 
     // Forward Shading
@@ -787,8 +820,10 @@ void GLEngine::draw() {
 
     drawCubeMap();
 
-    drawSceneNormal();
-
+    basicPBRGrid();
+   
+    texturedPBRGrid();
+    
     sceneFrameBuffer->Unbind();
 
     /*MSAA to Single Sample Framebuffer*/
@@ -821,6 +856,159 @@ void GLEngine::draw() {
     postProcess();
 }
 
+void GLEngine::basicPBRGrid()
+{
+    int nrRows = 7;
+    int nrColumns = 7;
+    float spacing = 25;
+    const float yOffset = 100.0f;
+
+    const float clusterRadius = 75.0f; 
+    const float clusterZ = 30.0f;
+
+    glm::vec3 clusterCenter(0.0f, yOffset, clusterZ);
+    std::vector<glm::vec3> lightPositions;
+    const float gridHalf = spacing * (nrColumns - 1) * 0.5f; 
+    for (int iy = -1; iy <= 1; ++iy)
+        for (int ix = -1; ix <= 1; ++ix)
+            lightPositions.push_back(glm::vec3(ix * gridHalf, yOffset + iy * gridHalf, clusterZ));
+
+    glm::vec3 lightColors[] = {
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f)
+    };
+    pipelines["pbr"].shader.use();
+
+    pipelines["pbr"].shader.setVec3("camPos", camera.position);
+
+    // material 
+    pipelines["pbr"].shader.setVec3("albedo", glm::vec3(0.5f, 0.0f, 0.0f));
+    pipelines["pbr"].shader.setFloat("ao", 1.0f);
+
+
+    pipelines["pbr"].shader.setInt("uLightCount", 9);
+    for (int i = 0; i < 9; ++i) {
+        pipelines["pbr"].shader.setVec3(
+            fmt::format("lightPositions[{}]", i), lightPositions[i]);
+        pipelines["pbr"].shader.setVec3(
+            fmt::format("lightColors[{}]", i), lightColors[i]);
+    }
+
+    glm::mat4 model = glm::mat4(1.0f);
+    for (int row = 0; row < nrRows; row++)
+    {
+        pipelines["pbr"].shader.setFloat("metallic", (float)row / (float)nrRows);
+        for (int col = 0; col < nrColumns; ++col)
+        {
+            pipelines["pbr"].shader.setFloat("roughness", glm::clamp((float)col / (float)nrColumns, 0.05f, 1.0f));
+
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(
+                (col - (nrColumns / 2)) * spacing,
+                (row - (nrRows / 2)) * spacing,
+                0.0f
+            ));
+
+            model = glm::translate(model, glm::vec3(0.0, 100.0f, 0.0f));
+            model = glm::scale(model, glm::vec3(10.0f, 10.0f, 10.0f));
+
+            pipelines["pbr"].shader.setMat4("model", model);
+
+            glBindVertexArray(sphereMesh.vao);
+            glDrawElements(GL_TRIANGLE_STRIP, (GLsizei)sphereMesh.indexCount, GL_UNSIGNED_INT, 0);
+            glBindVertexArray(0);
+        }
+    }
+
+}
+
+void GLEngine::texturedPBRGrid()
+{
+    int nrRows = 7;
+    int nrColumns = 7;
+    float spacing = 25;
+    const float xOffset = 200.0f;
+    const float yOffset = 100.0f;
+    const float clusterZ = 30.0f;
+
+    std::vector<glm::vec3> lightPositions;
+    const float gridHalf = spacing * (nrColumns - 1) * 0.5f;
+    for (int iy = -1; iy <= 1; ++iy)
+        for (int ix = -1; ix <= 1; ++ix)
+            lightPositions.push_back(glm::vec3(
+                xOffset + ix * gridHalf,
+                yOffset + iy * gridHalf,
+                clusterZ));
+
+    glm::vec3 lightColors[] = {
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f)
+    };
+    pipelines["pbr_textured"].shader.use();
+
+    pipelines["pbr_textured"].shader.setVec3("camPos", camera.position);
+
+    // material 
+    pipelines["pbr_textured"].shader.setInt("albedoMap", 0);
+    pipelines["pbr_textured"].shader.setInt("normalMap", 1);
+    pipelines["pbr_textured"].shader.setInt("metallicMap", 2);
+    pipelines["pbr_textured"].shader.setInt("roughnessMap", 3);
+    pipelines["pbr_textured"].shader.setInt("aoMap", 4);
+
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, rustedIronAlbedoTex.id);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, rustedIronNormalTex.id);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, rustedIronMetallicTex.id);
+    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, rustedIronRoughnessTex.id);
+    glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, rustedIronAOTex.id);
+
+
+    pipelines["pbr_textured"].shader.setInt("uLightCount", 9);
+    for (int i = 0; i < 9; ++i) {
+        pipelines["pbr_textured"].shader.setVec3(
+            fmt::format("lightPositions[{}]", i), lightPositions[i]);
+        pipelines["pbr_textured"].shader.setVec3(
+            fmt::format("lightColors[{}]", i), lightColors[i]);
+    }
+
+    glm::mat4 model = glm::mat4(1.0f);
+    for (int row = 0; row < nrRows; row++)
+    {
+        for (int col = 0; col < nrColumns; ++col)
+        {
+
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(
+                (col - (nrColumns / 2)) * spacing,
+                (row - (nrRows / 2)) * spacing,
+                0.0f
+            ));
+
+            model = glm::translate(model, glm::vec3(200.0, 100.0f, 0.0f));
+            model = glm::scale(model, glm::vec3(10.0f, 10.0f, 10.0f));
+
+            pipelines["pbr_textured"].shader.setMat4("model", model);
+
+            glBindVertexArray(sphereMesh.vao);
+            glDrawElements(GL_TRIANGLE_STRIP, (GLsizei)sphereMesh.indexCount, GL_UNSIGNED_INT, 0);
+            glBindVertexArray(0);
+        }
+    }
+
+}
 
 void GLEngine::geometryPass()
 {
@@ -831,13 +1019,6 @@ void GLEngine::geometryPass()
     glClearBufferfv(GL_COLOR, 1, z4);
     glClearBufferfv(GL_COLOR, 2, z4);
     glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
-    model = glm::mat4(1.0f);
-    view = camera.getViewMatrix();
-    proj = glm::perspective(glm::radians(75.f),
-        float(viewportW) / viewportH, 0.1f, 10000.f);
-    uboMatrices->updateMember(0, proj);
-    uboMatrices->updateMember(sizeof(glm::mat4), view);
 
     pipelines["gbuffer_geom"].apply();
     pipelines["gbuffer_geom"].setModel(model);
@@ -903,10 +1084,6 @@ void GLEngine::ambientOcclussion()
 
 void GLEngine::lightPass()
 {
-    glViewport(0, 0, viewportW, viewportH);
-    glDisable(GL_DEPTH_TEST);
-    glClear(GL_COLOR_BUFFER_BIT);
-
     pipelines["deferred_light"].shader.use();
 
     pipelines["deferred_light"].shader.setInt("uSamples", gBuffer->GetSamples());

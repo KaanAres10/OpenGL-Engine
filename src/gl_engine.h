@@ -49,7 +49,8 @@ private:
 	GLMesh        pointsMesh;
 	GLMesh        quadInstancingMesh;
 	GLMesh        floorMesh;
-	GLMesh        sphereMesh;
+
+	GLMeshBuffers sphereMesh;
 
 
 
@@ -57,7 +58,7 @@ private:
 
 	GLTexture     wallTex, faceTex, containerTex,
 		containerSpecularTex, floorTex, grassTex, windowTex, cubeMapTex, whiteTex, brickWallTex, brickWallNormalTex, brickWallDisplacementTex, 
-		toyBoxTex, toyBoxNormalTex, toyBoxDisTex, blackTex;
+		toyBoxTex, toyBoxNormalTex, toyBoxDisTex, blackTex, rustedIronAlbedoTex, rustedIronNormalTex, rustedIronRoughnessTex, rustedIronMetallicTex, rustedIronAOTex;
 
 	GLTexture depthCubemap;
 
@@ -117,6 +118,10 @@ private:
 
 	void update(float dt);
 	void draw();
+
+	void basicPBRGrid();
+
+	void texturedPBRGrid();
 
 	void ambientOcclussion();
 
