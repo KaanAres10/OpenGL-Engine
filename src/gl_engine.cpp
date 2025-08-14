@@ -385,6 +385,30 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["equirect_to_cubemap"] = GLPipeline{
+    Shader("equirect_to_cubemap.vert", "equirect_to_cubemap.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
+
+    pipelines["skybox"] = GLPipeline{
+    Shader("skybox.vert", "skybox.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
+
+    pipelines["pbr_IBL"] = GLPipeline{
+    Shader("pbr_IBL.vert", "pbr_IBL.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
+
     lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
@@ -408,6 +432,8 @@ bool GLEngine::init(int w, int h) {
     floorMesh = glloader::loadPlaneWithTexture_Normal();
 
     sphereMesh = glloader::loadSphere(64, 64);
+
+    hdrEnvCubeMesh = glloader::loadCube();
 
     containerTex = glloader::loadTexture("assets/textures/container.png", true);
     containerSpecularTex = glloader::loadTexture("assets/textures/container_specular.png");
@@ -437,7 +463,11 @@ bool GLEngine::init(int w, int h) {
     rustedIronMetallicTex = glloader::loadTexture("assets/textures/pbr/rustediron/rustediron_metallic.png");
     rustedIronAOTex = glloader::loadTexture("assets/textures/pbr/rustediron/rustediron_ao.png");
 
+    hdrEnvMapTex = glloader::loadTexture("assets/textures/hdr/newport_loft.hdr", true);
 
+    hdrEnvCubeMapTex = glloader::equirectangularToCubemap(hdrEnvMapTex.id, 512);
+
+    irradianceCubeMap = glloader::convolveIrradiance(hdrEnvCubeMapTex.id, 32);
 
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
@@ -497,7 +527,7 @@ bool GLEngine::init(int w, int h) {
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
     camera.front = { 0.0f, 0.0f, -1.0f };
-    camera.movementSpeed = 500.0f;
+    camera.movementSpeed = 50.0f;
 
     viewportW = w; viewportH = h;
 
@@ -818,11 +848,21 @@ void GLEngine::draw() {
         0, 0, viewportW, viewportH,
         GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 
-    drawCubeMap();
+    glDepthFunc(GL_LEQUAL);
+    pipelines["skybox"].shader.use();
+    pipelines["skybox"].shader.setInt("environmentMap", 0);
 
-    basicPBRGrid();
-   
-    texturedPBRGrid();
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, hdrEnvCubeMapTex.id);
+
+    glBindVertexArray(hdrEnvCubeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, hdrEnvCubeMesh.vertexCount);
+    glBindVertexArray(0); 
+
+    glDepthFunc(GL_LESS);
+
+
+    basicPBR_IBL_Grid();
+
     
     sceneFrameBuffer->Unbind();
 
@@ -1010,6 +1050,68 @@ void GLEngine::texturedPBRGrid()
 
 }
 
+void GLEngine::basicPBR_IBL_Grid() {
+    int nrRows = 7;
+    int nrColumns = 7;
+    float spacing = 2.5;
+
+    glm::vec3 lightPositions[] = {
+        glm::vec3(-10.0f,  10.0f, 10.0f),
+        glm::vec3(10.0f,  10.0f, 10.0f),
+        glm::vec3(-10.0f, -10.0f, 10.0f),
+        glm::vec3(10.0f, -10.0f, 10.0f),
+    };
+    glm::vec3 lightColors[] = {
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f)
+    };
+
+    pipelines["pbr_IBL"].shader.use();
+
+    pipelines["pbr_IBL"].shader.setVec3("camPos", camera.position);
+
+    // material 
+    pipelines["pbr_IBL"].shader.setVec3("albedo", glm::vec3(0.5f, 0.0f, 0.0f));
+    pipelines["pbr_IBL"].shader.setFloat("ao", 1.0f);
+
+    pipelines["pbr_IBL"].shader.setInt("irradianceMap", 0);
+
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceCubeMap.id);
+
+    pipelines["pbr_IBL"].shader.setInt("uLightCount", 4);
+    for (int i = 0; i < 4; ++i) {
+        pipelines["pbr_IBL"].shader.setVec3(
+            fmt::format("lightPositions[{}]", i), lightPositions[i]);
+        pipelines["pbr_IBL"].shader.setVec3(
+            fmt::format("lightColors[{}]", i), lightColors[i]);
+    }
+
+    glm::mat4 model = glm::mat4(1.0f);
+    for (int row = 0; row < nrRows; row++)
+    {
+        pipelines["pbr_IBL"].shader.setFloat("metallic", (float)row / (float)nrRows);
+        for (int col = 0; col < nrColumns; ++col)
+        {
+            pipelines["pbr_IBL"].shader.setFloat("roughness", glm::clamp((float)col / (float)nrColumns, 0.05f, 1.0f));
+
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(
+                (col - (nrColumns / 2)) * spacing,
+                (row - (nrRows / 2)) * spacing,
+                0.0f
+            ));
+
+            pipelines["pbr_IBL"].shader.setMat4("model", model);
+
+            glBindVertexArray(sphereMesh.vao);
+            glDrawElements(GL_TRIANGLE_STRIP, (GLsizei)sphereMesh.indexCount, GL_UNSIGNED_INT, 0);
+            glBindVertexArray(0);
+        }
+    }
+}
+
 void GLEngine::geometryPass()
 {
     glViewport(0, 0, viewportW, viewportH);
@@ -1023,7 +1125,7 @@ void GLEngine::geometryPass()
     pipelines["gbuffer_geom"].apply();
     pipelines["gbuffer_geom"].setModel(model);
 
-    sceneModel.draw(pipelines["gbuffer_geom"].shader);
+    //sceneModel.draw(pipelines["gbuffer_geom"].shader);
 
     gBuffer->Unbind();
 }

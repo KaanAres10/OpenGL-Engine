@@ -11,6 +11,7 @@ namespace glloader {
 	GLMesh loadQuadWithTexture_Normal();
 	GLMesh loadQuadWithTextureNDC();
 	GLMesh loadQuadWithColorNDC();
+	GLMesh loadCube();
 	GLMesh loadCubeWithTexture();
 	GLMesh loadPlaneWithTexture();
 	GLMesh loadPlaneWithTexture_Normal();
@@ -21,6 +22,8 @@ namespace glloader {
 	GLMesh loadCubeWithNormal();
 	GLMesh loadCubeWithTexture_Normal();
 	GLMeshBuffers loadSphere(unsigned X_SEGMENTS, unsigned Y_SEGMENTS);
+	GLTexture equirectangularToCubemap(GLuint hdr2D, int size);
+	GLTexture convolveIrradiance(GLuint envCubemap, int size);
 	std::vector<glm::vec3> makeSSAOKernel(int K, unsigned seed);
 	GLTexture createSSAONoiseTexture(int side, unsigned seed);
 }

@@ -49,6 +49,7 @@ private:
 	GLMesh        pointsMesh;
 	GLMesh        quadInstancingMesh;
 	GLMesh        floorMesh;
+	GLMesh        hdrEnvCubeMesh;
 
 	GLMeshBuffers sphereMesh;
 
@@ -64,6 +65,9 @@ private:
 
 	GLTexture ssaoNoiseTex;
 
+	GLTexture hdrEnvMapTex, hdrEnvCubeMapTex, irradianceCubeMap;
+
+	
 
 	GLuint blurredBloomTex;
 
@@ -92,7 +96,6 @@ private:
 	std::unique_ptr<Framebuffer> gBuffer;
 	std::unique_ptr<Framebuffer> ssaoFrameBuffer;
 	std::unique_ptr<Framebuffer> ssaoBlurFrameBuffer;
-	
 
 	std::vector<glm::vec3> ssaoKernel;
 	int   ssaoKernelSize = 64;
@@ -122,6 +125,8 @@ private:
 	void basicPBRGrid();
 
 	void texturedPBRGrid();
+
+	void basicPBR_IBL_Grid();
 
 	void ambientOcclussion();
 
@@ -160,5 +165,6 @@ private:
 	void addPointLight(const glm::vec3& pos, const glm::vec3& col);
 
 	void removePointLight(int idx);
+
 
 };
