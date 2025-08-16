@@ -261,6 +261,14 @@ uint32_t Framebuffer::GetTextureID(uint32_t index) const
     return 0;
 }
 
+uint32_t Framebuffer::GetDepthAttachmentID(uint32_t index) const
+{
+    if (index < m_RenderbufferIDs.size())
+        return m_RenderbufferIDs[index];
+    return 0;
+}
+
 uint32_t Framebuffer::GetSamples() const {
     return m_Specification.Samples;
 }
+

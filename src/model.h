@@ -15,11 +15,17 @@ public:
 	}
 	void draw(Shader& shader);
 
+	void drawPBR(Shader& shader) const;
+
+
 	void loadModel(string path);
 
 	void setInstanceData(const std::vector<glm::mat4>& models);
 
 	void drawInstanced(Shader& shader, GLsizei count);
+
+	void drawGeometryOnly(Shader& shader) const;
+
 
 private:
 

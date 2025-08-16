@@ -24,6 +24,8 @@ namespace glloader {
 	GLMeshBuffers loadSphere(unsigned X_SEGMENTS, unsigned Y_SEGMENTS);
 	GLTexture equirectangularToCubemap(GLuint hdr2D, int size);
 	GLTexture convolveIrradiance(GLuint envCubemap, int size);
+	GLTexture prefilterEnvironment(GLuint envCubemap, int baseSize = 128, int maxMipLevels = 5);
+	GLTexture integrateBRDF(int lutSize = 512);
 	std::vector<glm::vec3> makeSSAOKernel(int K, unsigned seed);
 	GLTexture createSSAONoiseTexture(int side, unsigned seed);
 }

@@ -35,6 +35,8 @@ public:
 
 	void drawInstanced(Shader& shader, GLsizei instanceCount);
 
+	void drawGeometryOnly() const;
+
 private:
 	unsigned int vao, vbo, ebo;
 

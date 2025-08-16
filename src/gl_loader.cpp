@@ -1037,6 +1037,57 @@ GLMeshBuffers glloader::loadSphere(unsigned X_SEGMENTS, unsigned Y_SEGMENTS)
 }
 
 
+
+std::vector<glm::vec3> glloader::makeSSAOKernel(int K, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> U01(0.0f, 1.0f);
+
+    std::vector<glm::vec3> kernel;
+    kernel.reserve(K);
+
+    for (int i = 0; i < K; ++i) {
+        glm::vec3 s(
+            U01(rng) * 2.0f - 1.0f, // x in [-1,1]
+            U01(rng) * 2.0f - 1.0f, // y in [-1,1]
+            U01(rng)               // z in [0,1]
+        );
+        s = glm::normalize(s);
+
+        float r = U01(rng);
+        float t = float(i) / float(K);
+        float scale = 0.1f + 0.9f * (t * t);
+        s *= (r * r) * scale;
+
+        kernel.push_back(s);
+    }
+    return kernel;
+}
+
+GLTexture glloader::createSSAONoiseTexture(int side, unsigned seed) {
+    GLTexture tex{};
+    tex.width = side;
+    tex.height = side;
+
+    std::mt19937 rng(seed);
+    std::uniform_real_distribution<float> U(-1.0f, 1.0f);
+
+    std::vector<glm::vec3> noise(side * side);
+    for (auto& v : noise) v = glm::vec3(U(rng), U(rng), 0.0f);
+
+    glGenTextures(1, &tex.id);
+    glBindTexture(GL_TEXTURE_2D, tex.id);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, side, side,
+        0, GL_RGB, GL_FLOAT, noise.data());
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    return tex;
+}
+
 GLTexture glloader::equirectangularToCubemap(GLuint hdr2D, int size)
 {
     GLTexture cube{};
@@ -1049,7 +1100,7 @@ GLTexture glloader::equirectangularToCubemap(GLuint hdr2D, int size)
         glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0,
             GL_RGB16F, size, size, 0, GL_RGB, GL_FLOAT, nullptr);
     }
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
@@ -1194,53 +1245,134 @@ GLTexture glloader::convolveIrradiance(GLuint envCubemap /* RGB16F cubemap */, i
     return irr;
 }
 
-std::vector<glm::vec3> glloader::makeSSAOKernel(int K, unsigned seed) {
-    std::mt19937 rng(seed);
-    std::uniform_real_distribution<float> U01(0.0f, 1.0f);
+GLTexture glloader::prefilterEnvironment(GLuint envCubemap, int baseSize, int maxMipLevels)
+{
+    GLTexture pre{};
+    pre.width = baseSize;
+    pre.height = baseSize;
 
-    std::vector<glm::vec3> kernel;
-    kernel.reserve(K);
-
-    for (int i = 0; i < K; ++i) {
-        glm::vec3 s(
-            U01(rng) * 2.0f - 1.0f, // x in [-1,1]
-            U01(rng) * 2.0f - 1.0f, // y in [-1,1]
-            U01(rng)               // z in [0,1]
-        );
-        s = glm::normalize(s);
-
-        float r = U01(rng);                
-        float t = float(i) / float(K);     
-        float scale = 0.1f + 0.9f * (t * t); 
-        s *= (r * r) * scale;
-
-        kernel.push_back(s);
+    glGenTextures(1, &pre.id);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, pre.id);
+    for (int f = 0; f < 6; ++f) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + f, 0, GL_RGB16F,
+            baseSize, baseSize, 0, GL_RGB, GL_FLOAT, nullptr);
     }
-    return kernel;
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glGenerateMipmap(GL_TEXTURE_CUBE_MAP); // allocate mip chain
+
+    // FBO (color=cube face+mip, depth RBO resized per mip)
+    FramebufferSpecification capSpec{};
+    capSpec.Width = baseSize;
+    capSpec.Height = baseSize;
+    capSpec.Samples = 1;
+    capSpec.Attachments = {
+        { FramebufferAttachmentType::TextureCubeMap, GL_RGB16F,         GL_COLOR_ATTACHMENT0 },
+        { FramebufferAttachmentType::Renderbuffer,   GL_DEPTH_COMPONENT24, GL_DEPTH_ATTACHMENT }
+    };
+    auto captureFBO = std::make_unique<Framebuffer>(capSpec);
+    captureFBO->Bind();
+
+    Shader prefilter("prefilter_envmap.vert", "prefilter_envmap.frag");
+    prefilter.use();
+    prefilter.setInt("environmentMap", 0);
+
+    glm::mat4 proj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, 10.0f);
+    glm::mat4 views[6] = {
+        glm::lookAt(glm::vec3(0), glm::vec3(1, 0, 0), glm::vec3(0,-1, 0)),
+        glm::lookAt(glm::vec3(0), glm::vec3(-1, 0, 0), glm::vec3(0,-1, 0)),
+        glm::lookAt(glm::vec3(0), glm::vec3(0, 1, 0), glm::vec3(0, 0, 1)),
+        glm::lookAt(glm::vec3(0), glm::vec3(0,-1, 0), glm::vec3(0, 0,-1)),
+        glm::lookAt(glm::vec3(0), glm::vec3(0, 0, 1), glm::vec3(0,-1, 0)),
+        glm::lookAt(glm::vec3(0), glm::vec3(0, 0,-1), glm::vec3(0,-1, 0)),
+    };
+    prefilter.setMat4("projection", proj);
+
+    // query env resolution for LOD computation in shader
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, envCubemap);
+    int envRes = 512;
+    glGetTexLevelParameteriv(GL_TEXTURE_CUBE_MAP_POSITIVE_X, 0, GL_TEXTURE_WIDTH, &envRes);
+
+    GLMesh cubeMesh = glloader::loadCube();
+
+    GLint oldViewport[4]; glGetIntegerv(GL_VIEWPORT, oldViewport);
+
+    for (int mip = 0; mip < maxMipLevels; ++mip) {
+        const int mipW = (int)(baseSize * std::pow(0.5f, mip));
+        const int mipH = mipW;
+        glViewport(0, 0, mipW, mipH);
+
+        glBindRenderbuffer(GL_RENDERBUFFER, captureFBO->GetDepthAttachmentID(0));
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, mipW, mipH);
+
+        float roughness = (float)mip / float(maxMipLevels - 1);
+        prefilter.setFloat("roughness", roughness);
+
+        glBindVertexArray(cubeMesh.vao);
+        for (int face = 0; face < 6; ++face) {
+            prefilter.setMat4("view", views[face]);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                GL_TEXTURE_CUBE_MAP_POSITIVE_X + face, pre.id, mip);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            glDrawArrays(GL_TRIANGLES, 0, (GLsizei)cubeMesh.vertexCount);
+        }
+    }
+    glBindVertexArray(0);
+
+    captureFBO->Unbind();
+    glViewport(oldViewport[0], oldViewport[1], oldViewport[2], oldViewport[3]);
+
+    return pre;
 }
 
-GLTexture glloader::createSSAONoiseTexture(int side, unsigned seed) {
-    GLTexture tex{};
-    tex.width = side;
-    tex.height = side;
+GLTexture glloader::integrateBRDF(int lutSize)
+{
+    GLTexture lut{};
+    lut.width = lutSize;
+    lut.height = lutSize;
 
-    std::mt19937 rng(seed);
-    std::uniform_real_distribution<float> U(-1.0f, 1.0f);
+    glGenTextures(1, &lut.id);
+    glBindTexture(GL_TEXTURE_2D, lut.id);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, lutSize, lutSize, 0, GL_RG, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
-    std::vector<glm::vec3> noise(side * side);
-    for (auto& v : noise) v = glm::vec3(U(rng), U(rng), 0.0f); 
+    FramebufferSpecification spec{};
+    spec.Width = lutSize;
+    spec.Height = lutSize;
+    spec.Samples = 1;
+    spec.Attachments = { {FramebufferAttachmentType::Texture2D, GL_RGB16F, GL_COLOR_ATTACHMENT0 }};                    
+    auto fbo = std::make_unique<Framebuffer>(spec);
+    fbo->Bind();
 
-    glGenTextures(1, &tex.id);
-    glBindTexture(GL_TEXTURE_2D, tex.id);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, lut.id, 0);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, side, side,
-        0, GL_RGB, GL_FLOAT, noise.data());
+    Shader brdf("brdf_integration.vert", "brdf_integration.frag");
+    brdf.use();
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT); 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    static GLMesh quad = glloader::loadQuadWithTextureNDC();
 
-    return tex;
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);              
+   
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    GLint oldVP[4]; glGetIntegerv(GL_VIEWPORT, oldVP);
+    glViewport(0, 0, lutSize, lutSize);
+
+    glBindVertexArray(quad.vao);
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)quad.vertexCount);
+    glBindVertexArray(0);
+
+    fbo->Unbind();
+    glViewport(oldVP[0], oldVP[1], oldVP[2], oldVP[3]);
+
+    return lut;
 }
-

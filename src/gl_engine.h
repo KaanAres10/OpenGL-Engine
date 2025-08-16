@@ -65,9 +65,12 @@ private:
 
 	GLTexture ssaoNoiseTex;
 
+	// For Diffuse IBL
 	GLTexture hdrEnvMapTex, hdrEnvCubeMapTex, irradianceCubeMap;
 
-	
+	// For Specular IBL
+	GLTexture prefilteredEnvMap;
+	GLTexture brdfIntegrationMap;
 
 	GLuint blurredBloomTex;
 
@@ -85,6 +88,7 @@ private:
 	Model sceneModel;
 	Model plantModel;
 	Model backpackModel;
+	Model cerberusModel;
 
 	vector<glm::vec3> vegetation;
 
@@ -127,6 +131,12 @@ private:
 	void texturedPBRGrid();
 
 	void basicPBR_IBL_Grid();
+
+	void texturedPBR_IBL_Grid();
+
+	void drawPBRModel();
+
+	void drawSkyBox();
 
 	void ambientOcclussion();
 

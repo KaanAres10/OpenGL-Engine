@@ -164,9 +164,14 @@ bool GLEngine::init(int w, int h) {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     glEnable(GL_MULTISAMPLE);
+
+
+
     glEnable(GL_SAMPLE_SHADING);
     glMinSampleShading(1.0f);
     
+    glEnable(GL_TEXTURE_CUBE_MAP_SEAMLESS);
+
     pipelines["light"] = GLPipeline{
         Shader("light.vert", "light.frag"),
         BlendMode::Alpha,
@@ -266,11 +271,11 @@ bool GLEngine::init(int w, int h) {
     };
 
     pipelines["blinn_phong"] = GLPipeline{
-      Shader("blinn_phong.vert", "blinn_phong.frag"),
-      BlendMode::None,
-      true,
-      GL_NONE,
-      GL_FILL
+    Shader("blinn_phong.vert", "blinn_phong.frag"),
+    BlendMode::None,
+    true,
+    GL_NONE,
+    GL_FILL
     };
 
     pipelines["blinn_phong_V2"] = GLPipeline{
@@ -409,6 +414,14 @@ bool GLEngine::init(int w, int h) {
     GL_FILL
     };
 
+    pipelines["pbr_IBL_textured"] = GLPipeline{
+    Shader("pbr_IBL_textured.vert", "pbr_IBL_textured.frag"),
+    BlendMode::None,
+    false,
+    GL_NONE,
+    GL_FILL
+    };
+
     lightMesh = glloader::loadCubeWithoutTexture();
 
     objectMesh = glloader::loadCubeWithTexture_Normal();
@@ -464,14 +477,16 @@ bool GLEngine::init(int w, int h) {
     rustedIronAOTex = glloader::loadTexture("assets/textures/pbr/rustediron/rustediron_ao.png");
 
     hdrEnvMapTex = glloader::loadTexture("assets/textures/hdr/newport_loft.hdr", true);
-
     hdrEnvCubeMapTex = glloader::equirectangularToCubemap(hdrEnvMapTex.id, 512);
-
     irradianceCubeMap = glloader::convolveIrradiance(hdrEnvCubeMapTex.id, 32);
+
+    prefilteredEnvMap = glloader::prefilterEnvironment(hdrEnvCubeMapTex.id, 128, 5);
+    brdfIntegrationMap = glloader::integrateBRDF(512);
 
 
     sceneModel.loadModel("assets/Sponza/Sponza.gltf");
     plantModel.loadModel("assets/plant/scene.gltf");
+    cerberusModel.loadModel("assets/cerberus/Cerberus_LP.FBX");
 
     cubePositions = {
        {  0.0f,  0.0f,   0.0f },
@@ -848,22 +863,15 @@ void GLEngine::draw() {
         0, 0, viewportW, viewportH,
         GL_DEPTH_BUFFER_BIT, GL_NEAREST);
 
-    glDepthFunc(GL_LEQUAL);
-    pipelines["skybox"].shader.use();
-    pipelines["skybox"].shader.setInt("environmentMap", 0);
-
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, hdrEnvCubeMapTex.id);
-
-    glBindVertexArray(hdrEnvCubeMesh.vao);
-    glDrawArrays(GL_TRIANGLES, 0, hdrEnvCubeMesh.vertexCount);
-    glBindVertexArray(0); 
-
-    glDepthFunc(GL_LESS);
-
-
-    basicPBR_IBL_Grid();
+    glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, 0, -1, "Forward PBR IBL");
 
     
+    drawSkyBox();
+
+    drawPBRModel();
+
+    glPopDebugGroup();
+
     sceneFrameBuffer->Unbind();
 
     /*MSAA to Single Sample Framebuffer*/
@@ -1077,8 +1085,12 @@ void GLEngine::basicPBR_IBL_Grid() {
     pipelines["pbr_IBL"].shader.setFloat("ao", 1.0f);
 
     pipelines["pbr_IBL"].shader.setInt("irradianceMap", 0);
+    pipelines["pbr_IBL"].shader.setInt("prefilterMap", 1);
+    pipelines["pbr_IBL"].shader.setInt("brdfIntegrationMap", 2);
 
     glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceCubeMap.id);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_CUBE_MAP, prefilteredEnvMap.id);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, brdfIntegrationMap.id);
 
     pipelines["pbr_IBL"].shader.setInt("uLightCount", 4);
     for (int i = 0; i < 4; ++i) {
@@ -1110,6 +1122,123 @@ void GLEngine::basicPBR_IBL_Grid() {
             glBindVertexArray(0);
         }
     }
+}
+
+void GLEngine::texturedPBR_IBL_Grid()
+{
+    int nrRows = 7;
+    int nrColumns = 7;
+    float spacing = 2.5;
+
+    glm::vec3 lightPositions[] = {
+        glm::vec3(-10.0f,  10.0f, 10.0f),
+        glm::vec3(10.0f,  10.0f, 10.0f),
+        glm::vec3(-10.0f, -10.0f, 10.0f),
+        glm::vec3(10.0f, -10.0f, 10.0f),
+    };
+    glm::vec3 lightColors[] = {
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f),
+        glm::vec3(300.0f, 300.0f, 300.0f)
+    };
+
+    pipelines["pbr_IBL_textured"].shader.use();
+
+    pipelines["pbr_IBL_textured"].shader.setVec3("camPos", camera.position);
+
+    // material 
+    pipelines["pbr_IBL_textured"].shader.setInt("albedoMap", 0);
+    pipelines["pbr_IBL_textured"].shader.setInt("normalMap", 1);
+    pipelines["pbr_IBL_textured"].shader.setInt("metallicMap", 2);
+    pipelines["pbr_IBL_textured"].shader.setInt("roughnessMap", 3);
+    pipelines["pbr_IBL_textured"].shader.setInt("aoMap", 4);
+
+
+    pipelines["pbr_IBL_textured"].shader.setInt("irradianceMap", 5);
+    pipelines["pbr_IBL_textured"].shader.setInt("prefilterMap", 6);
+    pipelines["pbr_IBL_textured"].shader.setInt("brdfIntegrationMap", 7);
+
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_2D, rustedIronAlbedoTex.id);
+    glActiveTexture(GL_TEXTURE1); glBindTexture(GL_TEXTURE_2D, rustedIronNormalTex.id);
+    glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_2D, rustedIronMetallicTex.id);
+    glActiveTexture(GL_TEXTURE3); glBindTexture(GL_TEXTURE_2D, rustedIronRoughnessTex.id);
+    glActiveTexture(GL_TEXTURE4); glBindTexture(GL_TEXTURE_2D, rustedIronAOTex.id);
+
+    glActiveTexture(GL_TEXTURE5); glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceCubeMap.id);
+    glActiveTexture(GL_TEXTURE6); glBindTexture(GL_TEXTURE_CUBE_MAP, prefilteredEnvMap.id);
+    glActiveTexture(GL_TEXTURE7); glBindTexture(GL_TEXTURE_2D, brdfIntegrationMap.id);
+
+    pipelines["pbr_IBL_textured"].shader.setInt("uLightCount", 4);
+    for (int i = 0; i < 4; ++i) {
+        pipelines["pbr_IBL_textured"].shader.setVec3(
+            fmt::format("lightPositions[{}]", i), lightPositions[i]);
+        pipelines["pbr_IBL_textured"].shader.setVec3(
+            fmt::format("lightColors[{}]", i), lightColors[i]);
+    }
+
+    glm::mat4 model = glm::mat4(1.0f);
+    for (int row = 0; row < nrRows; row++)
+    {
+        for (int col = 0; col < nrColumns; ++col)
+        {
+
+            model = glm::mat4(1.0f);
+            model = glm::translate(model, glm::vec3(
+                (col - (nrColumns / 2)) * spacing,
+                (row - (nrRows / 2)) * spacing,
+                0.0f
+            ));
+
+            pipelines["pbr_IBL_textured"].shader.setMat4("model", model);
+
+            glBindVertexArray(sphereMesh.vao);
+            glDrawElements(GL_TRIANGLE_STRIP, (GLsizei)sphereMesh.indexCount, GL_UNSIGNED_INT, 0);
+            glBindVertexArray(0);
+        }
+    }
+}
+
+void GLEngine::drawPBRModel()
+{
+    pipelines["pbr_IBL_textured"].shader.use();
+
+    pipelines["pbr_IBL_textured"].shader.setVec3("camPos", camera.position);
+
+    // material 
+    pipelines["pbr_IBL_textured"].shader.setInt("albedoMap", 0);
+    pipelines["pbr_IBL_textured"].shader.setInt("normalMap", 1);
+    pipelines["pbr_IBL_textured"].shader.setInt("metallicMap", 2);
+    pipelines["pbr_IBL_textured"].shader.setInt("roughnessMap", 3);
+    pipelines["pbr_IBL_textured"].shader.setInt("aoMap", 4);
+
+    pipelines["pbr_IBL_textured"].shader.setInt("irradianceMap", 5);
+    pipelines["pbr_IBL_textured"].shader.setInt("prefilterMap", 6);
+    pipelines["pbr_IBL_textured"].shader.setInt("brdfIntegrationMap", 7);
+
+    glActiveTexture(GL_TEXTURE5); glBindTexture(GL_TEXTURE_CUBE_MAP, irradianceCubeMap.id);
+    glActiveTexture(GL_TEXTURE6); glBindTexture(GL_TEXTURE_CUBE_MAP, prefilteredEnvMap.id);
+    glActiveTexture(GL_TEXTURE7); glBindTexture(GL_TEXTURE_2D, brdfIntegrationMap.id);
+
+
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::rotate(glm::radians(270.0f), glm::vec3(1, 0, 0));
+    pipelines["pbr_IBL_textured"].setModel(model);
+
+    cerberusModel.draw(pipelines["pbr_IBL_textured"].shader);
+}
+
+void GLEngine::drawSkyBox()
+{
+    glDepthFunc(GL_LEQUAL);
+    pipelines["skybox"].shader.use();
+    pipelines["skybox"].shader.setInt("environmentMap", 0);
+    pipelines["skybox"].shader.setFloat("lod", 0);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, hdrEnvCubeMapTex.id);
+    glBindVertexArray(hdrEnvCubeMesh.vao);
+    glDrawArrays(GL_TRIANGLES, 0, hdrEnvCubeMesh.vertexCount);
+    glBindVertexArray(0);
+    glDepthFunc(GL_LESS);
 }
 
 void GLEngine::geometryPass()
