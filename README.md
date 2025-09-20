@@ -31,7 +31,7 @@ Diffuse and specular texture maps.
 Directional, Point, and Spot lights, each with attenuation.
 
 (Phong lighting with textured models)
-![Phong lighting](/assets/Lighting.png)
+![Phong lighting](https://github.com/KaanAres10/OpenGL-Engine/assets/Lighting.png)
 
 Stage 3 — Shadows
 
@@ -142,6 +142,7 @@ Tech
 Languages: C++17, GLSL
 Graphics: OpenGL 4.5
 Build & Debug: CMake, RenderDoc
+
 
 
 
