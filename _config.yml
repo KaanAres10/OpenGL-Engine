@@ -5,8 +5,10 @@ exclude:
   - out/
   - .github/
   - CMakeFiles/
-  - **/*.vcxproj
-  - **/*.sln
-  - **/*.rdc
-  - **/*.zip
-  - **/node_modules/
+  - node_modules/
+  - "CMakeCache.txt"
+  - "*.vcxproj"
+  - "*.sln"
+  - "*.rdc"
+  - "*.zip"
+  - "*.mp4"
