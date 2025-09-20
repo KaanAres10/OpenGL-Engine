@@ -1,0 +1,12 @@
+exclude:
+  - third_party/
+  - external/
+  - build/
+  - out/
+  - .github/
+  - CMakeFiles/
+  - **/*.vcxproj
+  - **/*.sln
+  - **/*.rdc
+  - **/*.zip
+  - **/node_modules/
