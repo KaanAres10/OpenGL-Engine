@@ -1,3 +1,6 @@
+url: "https://kaanares10.github.io"
+baseurl: "/OpenGL-Engine"
+
 exclude:
   - third_party/
   - external/
@@ -12,3 +15,5 @@ exclude:
   - "*.rdc"
   - "*.zip"
   - "*.mp4"
+
+theme: null
