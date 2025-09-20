@@ -330,7 +330,6 @@ vector<Texture> Model::loadMaterialTextures(aiMaterial* mat,
 	const string& typeName,
 	const aiScene* scene)
 {
-	bool isDiffuse = (type == aiTextureType_DIFFUSE);
 	bool isBaseColor = (type == aiTextureType_DIFFUSE || type == aiTextureType_BASE_COLOR);
 
 	vector<Texture> textures;
@@ -415,7 +414,7 @@ vector<Texture> Model::loadMaterialTextures(aiMaterial* mat,
 		}
 		else {
 			// External file
-			tex.id = TextureFromFile(name, directory, type == aiTextureType_DIFFUSE);
+			tex.id = TextureFromFile(name, directory, isBaseColor);
 			tex.path = name;
 		}
 

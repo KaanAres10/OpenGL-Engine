@@ -224,7 +224,7 @@ bool GLEngine::init(int w, int h) {
 
     pipelines["framebuffer"] = GLPipeline{
     Shader("framebuffer.vert", "framebuffer.frag"),
-    BlendMode::Alpha,
+    BlendMode::None,
     true,
     GL_BACK,
     GL_FILL
@@ -542,7 +542,7 @@ bool GLEngine::init(int w, int h) {
     camera.pitch = { 0.040 };
     camera.yaw = { 0.2 };
     camera.front = { 0.0f, 0.0f, -1.0f };
-    camera.movementSpeed = 50.0f;
+    camera.movementSpeed = 400.0f;
 
     viewportW = w; viewportH = h;
 
@@ -870,6 +870,8 @@ void GLEngine::draw() {
 
     drawPBRModel();
 
+    basicPBR_IBL_Grid();
+
     glPopDebugGroup();
 
     sceneFrameBuffer->Unbind();
@@ -1061,7 +1063,7 @@ void GLEngine::texturedPBRGrid()
 void GLEngine::basicPBR_IBL_Grid() {
     int nrRows = 7;
     int nrColumns = 7;
-    float spacing = 2.5;
+    float spacing = 25.0f;
 
     glm::vec3 lightPositions[] = {
         glm::vec3(-10.0f,  10.0f, 10.0f),
@@ -1081,7 +1083,7 @@ void GLEngine::basicPBR_IBL_Grid() {
     pipelines["pbr_IBL"].shader.setVec3("camPos", camera.position);
 
     // material 
-    pipelines["pbr_IBL"].shader.setVec3("albedo", glm::vec3(0.5f, 0.0f, 0.0f));
+    pipelines["pbr_IBL"].shader.setVec3("albedo", glm::vec3(0.0f, 1.0f, 0.0f));
     pipelines["pbr_IBL"].shader.setFloat("ao", 1.0f);
 
     pipelines["pbr_IBL"].shader.setInt("irradianceMap", 0);
@@ -1114,6 +1116,9 @@ void GLEngine::basicPBR_IBL_Grid() {
                 (row - (nrRows / 2)) * spacing,
                 0.0f
             ));
+
+            model = glm::translate(model, glm::vec3(100.0f, 100.0f, 0.0f));
+            model = glm::scale(model, glm::vec3(10.0f, 10.f, 10.f));
 
             pipelines["pbr_IBL"].shader.setMat4("model", model);
 
@@ -1222,7 +1227,8 @@ void GLEngine::drawPBRModel()
 
 
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::rotate(glm::radians(270.0f), glm::vec3(1, 0, 0));
+    model = glm::translate(model, glm::vec3(0.0f, 100.0f, 0.0f));
+    model = glm::rotate(model, glm::radians(270.0f), glm::vec3(1, 0, 0));
     pipelines["pbr_IBL_textured"].setModel(model);
 
     cerberusModel.draw(pipelines["pbr_IBL_textured"].shader);
@@ -1234,7 +1240,7 @@ void GLEngine::drawSkyBox()
     pipelines["skybox"].shader.use();
     pipelines["skybox"].shader.setInt("environmentMap", 0);
     pipelines["skybox"].shader.setFloat("lod", 0);
-    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, hdrEnvCubeMapTex.id);
+    glActiveTexture(GL_TEXTURE0); glBindTexture(GL_TEXTURE_CUBE_MAP, cubeMapTex.id);
     glBindVertexArray(hdrEnvCubeMesh.vao);
     glDrawArrays(GL_TRIANGLES, 0, hdrEnvCubeMesh.vertexCount);
     glBindVertexArray(0);
@@ -1254,7 +1260,7 @@ void GLEngine::geometryPass()
     pipelines["gbuffer_geom"].apply();
     pipelines["gbuffer_geom"].setModel(model);
 
-    //sceneModel.draw(pipelines["gbuffer_geom"].shader);
+    sceneModel.draw(pipelines["gbuffer_geom"].shader);
 
     gBuffer->Unbind();
 }
@@ -1435,7 +1441,7 @@ void GLEngine::blurBloom()
 void GLEngine::postProcess()
 {
     glViewport(0, 0, viewportW, viewportH);
-    glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    glClearColor(0.0f, 0.0f, 0.0f, .0f);
     glClear(GL_COLOR_BUFFER_BIT);
     pipelines["framebuffer"].apply();
     pipelines["framebuffer"].shader.setInt("screenTexture", 0);
