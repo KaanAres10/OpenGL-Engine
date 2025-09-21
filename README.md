@@ -18,7 +18,7 @@ Camera supporting.
 Pipelines for depth, blending, stencil, and rasterizer states.
 
 The following architecture diagram shows how the core systems from asset loading to framebuffers and post-processing.
-![architecture](https://github.com/KaanAres10/OpenGL-Engine/tree/web/assets/architect.png)
+![architecture](/OpenGL-Engine/assets/architect.png)
 
 
 
@@ -142,6 +142,7 @@ Tech
 Languages: C++17, GLSL
 Graphics: OpenGL 4.5
 Build & Debug: CMake, RenderDoc
+
 
 
 
