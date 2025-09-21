@@ -7,7 +7,7 @@ It shows below each stage of feature integrated into the engine
 ### Stage 1 - Foundations
 
 Like many engines, began with the most basic scene:
-a single triangle on screen.
+a single triangle on screen and from there gradually built the core abstractions.
 
 To support future features, I built core abstractions:
 - Hot Reload Shader system for compiling GLSL and managing uniforms.  
@@ -167,4 +167,5 @@ This project taught me:
 - **Languages**: C++17, GLSL  
 - **Graphics**: OpenGL 4.5  
 - **Build & Debug**: CMake, RenderDoc  
+
 
