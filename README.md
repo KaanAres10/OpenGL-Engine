@@ -10,18 +10,10 @@ Like many engines, began with the most basic scene:
 a single triangle on screen.
 
 To support future features, I built core abstractions:
-
-- Shader system for compiling GLSL and managing uniforms.  
+- Hot Reload Shader system for compiling GLSL and managing uniforms.  
 - Mesh & Model classes (with Assimp integration for OBJ/FBX/GLTF).  
 - Camera supporting.  
 - Pipelines for depth, blending, stencil, and rasterizer states.  
-
-The following architecture diagram shows how the core systems from asset loading to framebuffers and post-processing.  
-
-<p align="center" style="margin-top:20px;">
-  <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/architect.png" width = 400px alt="architecture"/>
-</p>
-
 ---
 
 ### Stage 2 - Lighting & Shading
@@ -175,3 +167,4 @@ This project taught me:
 - **Languages**: C++17, GLSL  
 - **Graphics**: OpenGL 4.5  
 - **Build & Debug**: CMake, RenderDoc  
+
