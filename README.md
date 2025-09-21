@@ -13,7 +13,8 @@ To support future features, I built core abstractions:
 - Hot Reload Shader system for compiling GLSL and managing uniforms.  
 - Mesh & Model classes (with Assimp integration for OBJ/FBX/GLTF).  
 - Camera supporting.  
-- Pipelines for depth, blending, stencil, and rasterizer states.  
+- Pipelines for depth, blending, stencil, and rasterizer states.
+
 ---
 
 ### Stage 2 - Lighting & Shading
@@ -167,5 +168,6 @@ This project taught me:
 - **Languages**: C++17, GLSL  
 - **Graphics**: OpenGL 4.5  
 - **Build & Debug**: CMake, RenderDoc  
+
 
 
