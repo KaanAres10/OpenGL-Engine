@@ -1,5 +1,3 @@
-# OpenGL Engine
-
 Custom Physically Based Renderer with deferred shading, SSAO, HDR, Bloom, IBL, and instancing.
 
 It shows below each stage of feature integrated into the engine 
@@ -170,6 +168,7 @@ This project taught me:
 - **Languages**: C++17, GLSL  
 - **Graphics**: OpenGL 4.5  
 - **Build & Debug**: CMake, RenderDoc  
+
 
 
 
