@@ -5,167 +5,226 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Custom Physically Based Renderer — OpenGL Engine</title>
 
-  <!-- Theme integration -->
+  <!-- Global theme -->
   <link rel="stylesheet" href="https://kaanares10.github.io/theme.css">
   <meta name="theme-color" content="#0b0d10">
   <script src="https://kaanares10.github.io/theme.js"></script>
 
+  <!-- GitHub-like markdown style (lightweight) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/github-markdown-css@5.5.1/github-markdown.min.css">
+
   <style>
-    body {
-      background: var(--bg);
-      color: var(--text);
-      font: 17px/1.7 system-ui, sans-serif;
-      max-width: 900px;
-      margin: 40px auto;
-      padding: 0 16px;
+    body{
+      background:var(--bg);
+      color:var(--text);
+      font:17px/1.7 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      margin:0;
+      padding:0;
     }
-    img { max-width: 100%; border-radius: 8px; margin: 12px 0; }
-    h1, h2, h3 { color: var(--accent); margin-top: 36px; }
-    h1 { font-size: 28px; }
-    h2 { font-size: 22px; }
-    h3 { font-size: 18px; }
-    a { color: var(--accent); }
-    hr { border: none; border-top: 1px solid var(--line); margin: 32px 0; }
-    ul { padding-left: 20px; }
+    .wrap{
+      max-width: 960px;
+      margin: 40px auto;
+      padding: 0 16px 56px;
+    }
+    /* Make GitHub markdown colors follow your CSS variables */
+    .markdown-body{
+      color:var(--text);
+      background:transparent;
+    }
+    .markdown-body a{ color:var(--accent); }
+    .markdown-body hr{ border:0; border-top:1px solid var(--line); }
+    .markdown-body img{ border-radius:8px; }
   </style>
 </head>
 
 <body>
-  <main>
-    <h1>Custom Physically Based Renderer with Deferred Shading, SSAO, HDR, Bloom, IBL, and Instancing</h1>
-    <p>It shows below each stage of feature integrated into the engine.</p>
-
-    <hr>
-
-    <h2>Stage 1 – Foundations</h2>
-    <p>Like many engines, it began with the most basic scene: a single triangle on screen and from there gradually built the core abstractions.</p>
-    <p>To support future features, I built core abstractions:</p>
-    <ul>
-      <li>Hot Reload Shader system for compiling GLSL and managing uniforms.</li>
-      <li>Mesh &amp; Model classes (with Assimp integration for OBJ/FBX/GLTF).</li>
-      <li>Camera supporting.</li>
-      <li>Pipelines for depth, blending, stencil, and rasterizer states.</li>
-    </ul>
-
-    <hr>
-
-    <h2>Stage 2 – Lighting &amp; Shading</h2>
-    <p>Next came Phong and Blinn–Phong shading, with:</p>
-    <ul>
-      <li>Diffuse and specular texture maps.</li>
-      <li>Directional, Point, and Spot lights, each with attenuation.</li>
-    </ul>
-    <p><strong>(Multiple Lights)</strong></p>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Lighting.png" alt="Phong lighting">
-
-    <hr>
-
-    <h2>Stage 3 – Shadows</h2>
-    <p>Lighting without shadows felt incomplete. I implemented:</p>
-    <ul>
-      <li>Directional shadow mapping with orthographic projections.</li>
-      <li>Point light shadows using depth cubemaps and omnidirectional sampling.</li>
-    </ul>
-    <p>I added ImGui debug views to inspect light frustums and tweak bias/PCF settings.</p>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/RenderDoc_Shadpw.png" alt="Directional shadows projected into the cathedral">
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/RenderDoc_PointLigthShadow.png" alt="PointLight shadows">
-
-    <hr>
-
-    <h2>Stage 4 – Normal &amp; Parallax Mapping</h2>
-    <p>Flat textures weren’t enough, so I introduced:</p>
-    <ul>
-      <li>Normal Mapping for fine surface detail.</li>
-      <li>Parallax Occlusion Mapping for height illusion.</li>
-    </ul>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Screenshot%202025-09-20%20230928.png" alt="Normal Map">
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Parallax.png" alt="Parallax test">
-
-    <hr>
-
-    <h2>Stage 5 – HDR, Bloom &amp; Post-Processing</h2>
-    <p>The next step was through tone mapping and bloom:</p>
-    <ul>
-      <li>HDR framebuffer with exposure controls.</li>
-      <li>Multi-pass Gaussian blur bloom.</li>
-      <li>Gamma correction for accurate brightness.</li>
-    </ul>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Bloom.png" alt="Bloom on emissive lights in Sponza">
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/High_Exposure.png" alt="High Exposure">
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Screenshot%202025-09-20%20225329.png" alt="Pixelated bloom">
-
-    <hr>
-
-    <h2>Stage 6 – Deferred Rendering &amp; SSAO</h2>
-    <p>Switching to a different rendering technique:</p>
-    <ul>
-      <li>Deferred Shading with a G-buffer (albedo, normals, positions).</li>
-      <li>SSAO (Screen Space Ambient Occlusion) with random kernel samples and blur.</li>
-    </ul>
-    <p><em>RenderDoc captures, stepping through G-buffer attachments.</em></p>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Deferred.png" alt="Deferred">
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/ssao.png" alt="SSAO">
-
-    <hr>
-
-    <h2>Stage 7 – Physically Based Rendering</h2>
-    <p>I implemented Cook–Torrance BRDF with:</p>
-    <ul>
-      <li>Albedo, Metallic, Roughness, AO, and Normal maps.</li>
-      <li>Energy-conserving specular highlights.</li>
-    </ul>
-    <p>Materials began to look photorealistic.</p>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/rust.png" alt="PBR material">
-
-    <hr>
-
-    <h2>Stage 8 – Image-Based Lighting</h2>
-    <p>To push realism further, I added IBL (Image-Based Lighting):</p>
-    <ul>
-      <li>Converted HDR equirectangular maps → cubemaps.</li>
-      <li>Precomputed diffuse irradiance and specular prefilter maps.</li>
-      <li>Integrated into the PBR shader.</li>
-    </ul>
-    <p>Now objects reflected their environment naturally, even without direct lights.</p>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/ibl.png" alt="IBL reflections">
-
-    <hr>
-
-    <h2>Stage 9 – Instancing &amp; Vegetation</h2>
-    <p>I added GPU instancing to draw thousands of leaves with a single draw call. This unlocked massive vegetation rendering.</p>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/instancing.png" alt="Instancing test grid">
-
-    <hr>
-
-    <h2>Stage 10 – Debugging Tools</h2>
-    <p>Throughout development, I leaned on:</p>
-    <ul>
-      <li>RenderDoc for frame captures</li>
-      <li>ImGui for parameter settings</li>
-    </ul>
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Normal.png" alt="Debug normals">
-    <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Screenshot%202025-08-04%20170230.png" alt="Shadow bias debug">
-
-    <hr>
-
-    <h2>Reflection</h2>
-    <p>This project taught me:</p>
-    <ul>
-      <li>The full graphics pipeline, from vertex data to post-processing.</li>
-      <li>How to manage a C++ engine architecture with reusable systems.</li>
-      <li>How modern rendering features (IBL, SSAO) work mathematically and practically.</li>
-    </ul>
-
-    <hr>
-
-    <h2>Tech</h2>
-    <ul>
-      <li><strong>Languages:</strong> C++17, GLSL</li>
-      <li><strong>Graphics:</strong> OpenGL 4.5</li>
-      <li><strong>Build &amp; Debug:</strong> CMake, RenderDoc</li>
-    </ul>
+  <main class="wrap">
+    <article id="md-target" class="markdown-body"></article>
   </main>
 
-  <script src="https://kaanares10.github.io/theme.js"></script>
+  <!-- Your raw Markdown goes here (unchanged) -->
+  <script type="text/markdown" id="md-source">
+Custom Physically Based Renderer with deferred shading, SSAO, HDR, Bloom, IBL, and instancing.
+
+It shows below each stage of feature integrated into the engine 
+
+---
+
+### Stage 1 - Foundations
+
+Like many engines, began with the most basic scene:
+a single triangle on screen and from there gradually built the core abstractions.
+
+To support future features, I built core abstractions:
+- Hot Reload Shader system for compiling GLSL and managing uniforms.  
+- Mesh & Model classes (with Assimp integration for OBJ/FBX/GLTF).  
+- Camera supporting.  
+- Pipelines for depth, blending, stencil, and rasterizer states.
+
+---
+
+### Stage 2 - Lighting & Shading
+
+Next came Phong and Blinn–Phong shading, with:
+
+- Diffuse and specular texture maps.  
+- Directional, Point, and Spot lights, each with attenuation.  
+
+(Multiple Lights)  
+![Phong lighting](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Lighting.png)
+
+---
+
+### Stage 3 - Shadows
+
+Lighting without shadows felt incomplete. I implemented:
+
+- Directional shadow mapping with orthographic projections.  
+- Point light shadows using depth cubemaps and omnidirectional sampling.  
+
+I added ImGui debug views to inspect light frustums and tweak bias/PCF settings.  
+
+(Directional shadows projected into the cathedral)  
+![Shadows](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/RenderDoc_Shadpw.png)  
+
+(PointLight shadows)  
+![Shadows2](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/RenderDoc_PointLigthShadow.png)
+
+---
+
+### Stage 4 - Normal & Parallax Mapping
+
+Flat textures weren’t enough so introduced:
+
+- Normal Mapping for fine surface detail.  
+- Parallax Occlusion Mapping for height illusion.  
+
+(Normal Map)  
+![Normal](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Screenshot%202025-09-20%20230928.png)
+(Parallax Test)
+![Parallax test](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Parallax.png)
+
+---
+
+### Stage 5 - HDR, Bloom & Post-Processing
+
+The next is through tone mapping and bloom:
+
+- HDR framebuffer with exposure controls.  
+- Multi-pass Gaussian blur bloom.  
+- Gamma correction for accurate brightness.  
+
+(Bloom on emissive lights in Sponza)  
+![Bloom](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Bloom.png)  
+(High Exposure)  
+![Bloom](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/High_Exposure.png)
+(Pixelated)
+![Pixel](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Screenshot%202025-09-20%20225329.png)
+
+---
+
+### Stage 6 - Deferred Rendering & SSAO 
+
+Switching to Different Rendering Technique:
+
+- Deferred Shading with a G-buffer (albedo, normals, positions).  
+- SSAO (Screen Space Ambient Occlusion) with random kernel samples + blur.  
+
+RenderDoc captures, stepping through G-buffer attachments.  
+
+(G-buffer outputs)
+
+<p align="center" style="margin-top:20px;">
+  <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Deferred.png" alt="Deferred"/>
+</p>
+
+(SSAO pass)
+
+<p align="center" style="margin-top:20px;">
+  <img src="https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/ssao.png" alt="SSAO"/>
+</p>
+
+---
+
+### Stage 7 - Physically Based Rendering 
+
+I implemented Cook–Torrance BRDF with:
+
+- Albedo, Metallic, Roughness, AO, and Normal maps.  
+- Energy-conserving specular highlights.  
+
+Materials began to look photorealistic.  
+
+(Rusty metal sphere)  
+![PBR](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/rust.png)
+
+---
+
+### Stage 8 - Image-Based Lighting
+
+To further, added IBL (Image-Based Lighting):
+
+- Converted HDR equirectangular maps → cubemaps.  
+- Precomputed diffuse irradiance and specular prefilter maps.  
+- Integrated into the PBR shader.  
+
+Now objects reflected their environment naturally, even without direct lights.  
+
+(Spheres under HDR skybox with specular reflections)  
+![IBL](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/ibl.png)
+
+---
+
+### Stage 9 - Instancing & Vegetation 
+
+I added GPU instancing to draw thousands of leaves with a single draw call.  
+This unlocked massive vegetation rendering.  
+
+(100.000 Vegetation instancing test grid)  
+![Instancing](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/instancing.png)
+
+---
+
+### Stage 10 - Debugging Tools
+
+Throughout Debug, I leaned on:
+
+- RenderDoc for frame captures  
+- ImGui for parameter settings
+
+(Debug Normals)
+![Normal](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Normal.png)  
+(Debug Shadow Aliasing)
+![Shadow Bias](https://media.githubusercontent.com/media/KaanAres10/OpenGL-Engine/web/assets/Screenshot%202025-08-04%20170230.png)  
+
+---
+
+## Reflection
+
+This project taught me:
+
+- The full graphics pipeline, from vertex data to post-processing.  
+- How to manage a C++ engine architecture with reusable systems.  
+- How modern rendering features (IBL, SSAO) work mathematically and practically.  
+
+---
+
+## Tech 
+
+- **Languages**: C++17, GLSL  
+- **Graphics**: OpenGL 4.5  
+- **Build & Debug**: CMake, RenderDoc  
+  </script>
+
+  <!-- Tiny, fast markdown renderer -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <script>
+    // Render the markdown into the article
+    const src = document.getElementById('md-source').textContent;
+    document.getElementById('md-target').innerHTML = marked.parse(src, {
+      breaks: true
+    });
+  </script>
 </body>
 </html>
