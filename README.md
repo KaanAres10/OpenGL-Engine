@@ -1,4 +1,4 @@
-# OpenGL Engine
+# PBR Rendering Engine
 
 Custom Physically Based Renderer with deferred shading, SSAO, HDR, Bloom, IBL, and instancing.
 
@@ -170,6 +170,7 @@ This project taught me:
 - **Languages**: C++17, GLSL  
 - **Graphics**: OpenGL 4.5  
 - **Build & Debug**: CMake, RenderDoc  
+
 
 
 
